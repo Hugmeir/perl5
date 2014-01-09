@@ -1244,7 +1244,42 @@ EXTCONST U32 PL_charclass[];
                                ? (c)                                       \
                                : PL_mod_latin1_uc[ (U8) (c) ])
 
-/* Use the libc versions for these if available. */
+/* For internal core Perl use only: the base macro for defining macros like
+ * isALPHA_LC, which uses the current LC_CTYPE locale.  'c' is the code point
+ * (0-255) to check.  'utf8_locale_classnum' is currently unused.  The code to
+ * actually do the test this is passed in 'non_utf8'.  If 'c' is above 255, 0
+ * is returned.  For accessing the full range of possible code points under
+ * locale rules, use the macros based on _generic_LC_uvchr instead of this. */
+#define _generic_LC_base(c, utf8_locale_classnum, non_utf8)                    \
+              (! FITS_IN_8_BITS(c)                                             \
+               ? 0                                                             \
+                  : cBOOL(non_utf8))
+
+/* For internal core Perl use only: a helper macro for defining macros like
+ * isALPHA_LC.  'c' is the code point (0-255) to check.  The function name to
+ * actually do this test is passed in 'non_utf8_func', which is called on 'c',
+ * casting 'c' to the macro _LC_CAST, which should not be parenthesized.  See
+ * _generic_LC_base for more info */
+#define _generic_LC(c, utf8_locale_classnum, non_utf8_func)                    \
+                        _generic_LC_base(c,utf8_locale_classnum,               \
+                                         non_utf8_func( (_LC_CAST) (c)))
+
+/* For internal core Perl use only: like _generic_LC, but also returns TRUE if
+ * 'c' is the platform's native underscore character */
+#define _generic_LC_underscore(c,utf8_locale_classnum,non_utf8_func)           \
+                        _generic_LC_base(c, utf8_locale_classnum,              \
+                                         (non_utf8_func( (_LC_CAST) (c))       \
+                                          || (char)(c) == '_'))
+
+#define _generic_toLOWER_LC(c, function, cast)  (! FITS_IN_8_BITS(c)           \
+                                                ? (c)                          \
+                                                : function((cast)(c)))
+#define _generic_toUPPER_LC(c, function, cast)                                 \
+                    (! FITS_IN_8_BITS(c)                                       \
+                    ? (c)                                                      \
+                      : function((cast)(c)))                                   \
+
+/* Use the libc versions for these if available. */ 
 #if defined(HAS_ISASCII) && ! defined(USE_NEXT_CTYPE)
 #   define isASCII_LC(c) (FITS_IN_8_BITS(c) && isascii( (U8) (c)))
 #else
@@ -1259,44 +1294,50 @@ EXTCONST U32 PL_charclass[];
 
 #ifdef USE_NEXT_CTYPE   /* NeXT computers */
 
-#  define isALPHANUMERIC_LC(c)	NXIsAlNum((unsigned int)(c))
-#  define isALPHA_LC(c)		NXIsAlpha((unsigned int)(c))
-#  define isCNTRL_LC(c)		NXIsCntrl((unsigned int)(c))
-#  define isDIGIT_LC(c)		NXIsDigit((unsigned int)(c))
-#  define isGRAPH_LC(c)		NXIsGraph((unsigned int)(c))
-#  define isIDFIRST_LC(c) (NXIsAlpha((unsigned int)(c)) || (char)(c) == '_')
-#  define isLOWER_LC(c)		NXIsLower((unsigned int)(c))
-#  define isPRINT_LC(c)		NXIsPrint((unsigned int)(c))
-#  define isPUNCT_LC(c)		NXIsPunct((unsigned int)(c))
-#  define isSPACE_LC(c)		NXIsSpace((unsigned int)(c))
-#  define isUPPER_LC(c)		NXIsUpper((unsigned int)(c))
-#  define isWORDCHAR_LC(c) (NXIsAlNum((unsigned int)(c)) || (char)(c) == '_')
-#  define isXDIGIT_LC(c)        NXIsXDigit((unsigned int)(c))
-#  define toLOWER_LC(c)		NXToLower((unsigned int)(c))
-#  define toUPPER_LC(c)		NXToUpper((unsigned int)(c))
+#    define _LC_CAST unsigned int   /* Needed by _generic_LC.  NeXT functions
+                                       use this as their input type */
+
+#    define isALPHA_LC(c)   _generic_LC(c, _CC_ALPHA, NXIsAlpha)
+#    define isALPHANUMERIC_LC(c)  _generic_LC(c, _CC_ALPHANUMERIC, NXIsAlNum)
+#    define isCNTRL_LC(c)    _generic_LC(c, _CC_CNTRL, NXIsCntrl)
+#    define isDIGIT_LC(c)    _generic_LC(c, _CC_DIGIT, NXIsDigit)
+#    define isGRAPH_LC(c)    _generic_LC(c, _CC_GRAPH, NXIsGraph)
+#    define isIDFIRST_LC(c)  _generic_LC_underscore(c, _CC_IDFIRST, NXIsAlpha)
+#    define isLOWER_LC(c)    _generic_LC(c, _CC_LOWER, NXIsLower)
+#    define isPRINT_LC(c)    _generic_LC(c, _CC_PRINT, NXIsPrint)
+#    define isPUNCT_LC(c)    _generic_LC(c, _CC_PUNCT, NXIsPunct)
+#    define isSPACE_LC(c)    _generic_LC(c, _CC_SPACE, NXIsSpace)
+#    define isUPPER_LC(c)    _generic_LC(c, _CC_UPPER, NXIsUpper)
+#    define isWORDCHAR_LC(c) _generic_LC_underscore(c, _CC_WORDCHAR, NXIsAlNum)
+#    define isXDIGIT_LC(c)   _generic_LC(c, _CC_XDIGIT, NXIsXdigit)
+
+#    define toLOWER_LC(c) _generic_toLOWER_LC((c), NXToLower, unsigned int)
+#    define toUPPER_LC(c) _generic_toUPPER_LC((c), NXToUpper, unsigned int)
 
 #else /* !USE_NEXT_CTYPE */
 
 #  if defined(CTYPE256) || (!defined(isascii) && !defined(HAS_ISASCII))
     /* For most other platforms */
-#    define isALPHA_LC(c)   (FITS_IN_8_BITS(c) && isalpha((unsigned char)(c)))
-#    define isALPHANUMERIC_LC(c)   (FITS_IN_8_BITS(c)                          \
-                                               && isalnum((unsigned char)(c)))
-#    define isCNTRL_LC(c)    (FITS_IN_8_BITS(c) && iscntrl((unsigned char)(c)))
-#    define isDIGIT_LC(c)    (FITS_IN_8_BITS(c) && isdigit((unsigned char)(c)))
-#    define isGRAPH_LC(c)    (FITS_IN_8_BITS(c) && isgraph((unsigned char)(c)))
-#    define isIDFIRST_LC(c) (FITS_IN_8_BITS(c)                                 \
-                            && (isalpha((unsigned char)(c)) || (char)(c) == '_'))
-#    define isLOWER_LC(c)    (FITS_IN_8_BITS(c) && islower((unsigned char)(c)))
-#    define isPRINT_LC(c)    (FITS_IN_8_BITS(c) && isprint((unsigned char)(c)))
-#    define isPUNCT_LC(c)    (FITS_IN_8_BITS(c) && ispunct((unsigned char)(c)))
-#    define isSPACE_LC(c)    (FITS_IN_8_BITS(c) && isspace((unsigned char)(c)))
-#    define isUPPER_LC(c)    (FITS_IN_8_BITS(c) && isupper((unsigned char)(c)))
-#    define isWORDCHAR_LC(c) (FITS_IN_8_BITS(c)                                \
-                            && (isalnum((unsigned char)(c)) || (char)(c) == '_'))
-#    define isXDIGIT_LC(c)   (FITS_IN_8_BITS(c) && isxdigit((unsigned char)(c)))
-#    define toLOWER_LC(c) (FITS_IN_8_BITS(c) ? (UV)tolower((unsigned char)(c)) : (c))
-#    define toUPPER_LC(c) (FITS_IN_8_BITS(c) ? (UV)toupper((unsigned char)(c)) : (c))
+
+#    define _LC_CAST U8
+
+#    define isALPHA_LC(c)   _generic_LC(c, _CC_ALPHA, isalpha)
+#    define isALPHANUMERIC_LC(c)  _generic_LC(c, _CC_ALPHANUMERIC, isalnum)
+#    define isCNTRL_LC(c)    _generic_LC(c, _CC_CNTRL, iscntrl)
+#    define isDIGIT_LC(c)    _generic_LC(c, _CC_DIGIT, isdigit)
+#    define isGRAPH_LC(c)    _generic_LC(c, _CC_GRAPH, isgraph)
+#    define isIDFIRST_LC(c)  _generic_LC_underscore(c, _CC_IDFIRST, isalpha)
+#    define isLOWER_LC(c)    _generic_LC(c, _CC_LOWER, islower)
+#    define isPRINT_LC(c)    _generic_LC(c, _CC_PRINT, isprint)
+#    define isPUNCT_LC(c)    _generic_LC(c, _CC_PUNCT, ispunct)
+#    define isSPACE_LC(c)    _generic_LC(c, _CC_SPACE, isspace)
+#    define isUPPER_LC(c)    _generic_LC(c, _CC_UPPER, isupper)
+#    define isWORDCHAR_LC(c) _generic_LC_underscore(c, _CC_WORDCHAR, isalnum)
+#    define isXDIGIT_LC(c)   _generic_LC(c, _CC_XDIGIT, isxdigit)
+
+
+#    define toLOWER_LC(c) _generic_toLOWER_LC((c), tolower, U8)
+#    define toUPPER_LC(c) _generic_toUPPER_LC((c), toupper, U8)
 
 #  else  /* The final fallback position */
 
@@ -1313,6 +1354,7 @@ EXTCONST U32 PL_charclass[];
 #    define isUPPER_LC(c)	(isascii(c) && isupper(c))
 #    define isWORDCHAR_LC(c)	(isascii(c) && (isalnum(c) || (c) == '_'))
 #    define isXDIGIT_LC(c)      (isascii(c) && isxdigit(c))
+
 #    define toLOWER_LC(c)	(isascii(c) ? tolower(c) : (c))
 #    define toUPPER_LC(c)	(isascii(c) ? toupper(c) : (c))
 
