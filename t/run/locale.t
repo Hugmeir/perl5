@@ -22,7 +22,7 @@ use Config;
 my $have_setlocale = $Config{d_setlocale} eq 'define';
 my $have_strtod = $Config{d_strtod} eq 'define';
 $have_setlocale = 0 if $@;
-# Visual C's CRT goes silly on strings of the form "en_US.ISO8859-1"
+# XXX Visual C's CRT goes silly on strings of the form "en_US.ISO8859-1"
 # and mingw32 uses said silly CRT
 $have_setlocale = 0 if (($^O eq 'MSWin32' || $^O eq 'NetWare') && $Config{cc} =~ /^(cl|gcc)/i);
 skip_all("no setlocale available") unless $have_setlocale;

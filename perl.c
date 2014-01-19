@@ -1031,12 +1031,14 @@ perl_destruct(pTHXx)
     SvREFCNT_dec(PL_utf8_tofold);
     SvREFCNT_dec(PL_utf8_idstart);
     SvREFCNT_dec(PL_utf8_idcont);
+    SvREFCNT_dec(PL_utf8_foldable);
     SvREFCNT_dec(PL_utf8_foldclosures);
     SvREFCNT_dec(PL_AboveLatin1);
     SvREFCNT_dec(PL_UpperLatin1);
     SvREFCNT_dec(PL_Latin1);
     SvREFCNT_dec(PL_NonL1NonFinalFold);
     SvREFCNT_dec(PL_HasMultiCharFold);
+    SvREFCNT_dec(PL_problematic_locale_folds);
     PL_utf8_mark	= NULL;
     PL_utf8_toupper	= NULL;
     PL_utf8_totitle	= NULL;
@@ -1049,6 +1051,7 @@ perl_destruct(pTHXx)
     PL_HasMultiCharFold  = NULL;
     PL_Latin1            = NULL;
     PL_NonL1NonFinalFold = NULL;
+    PL_problematic_locale_folds = NULL;
     PL_UpperLatin1       = NULL;
     for (i = 0; i < POSIX_CC_COUNT; i++) {
         SvREFCNT_dec(PL_XPosix_ptrs[i]);

@@ -854,6 +854,67 @@
 : 0 )
 
 /*
+	FOLDS_TO_MULTI: characters that fold to multi-char strings
+
+	\p{_Perl_Folds_To_Multi_Char}
+*/
+/*** GENERATED CODE ***/
+#define is_FOLDS_TO_MULTI_utf8(s)                                           \
+( ( 0xC3 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x9F == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xC4 == NATIVE_TO_LATIN1(((U8*)s)[0]) || 0xC7 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?\
+    ( ( 0xB0 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xC5 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x89 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xCE == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( ( NATIVE_TO_LATIN1(((U8*)s)[1]) & 0xDF ) == 0x90 ) ? 2 : 0 )        \
+: ( 0xD6 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x87 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xE1 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0xBA == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ?                           \
+	( ( ( 0x96 <= NATIVE_TO_LATIN1(((U8*)s)[2]) && NATIVE_TO_LATIN1(((U8*)s)[2]) <= 0x9A ) || 0x9E == NATIVE_TO_LATIN1(((U8*)s)[2]) ) ? 3 : 0 )\
+    : ( 0xBD == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ?                           \
+	( ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF9 ) == 0x90 ) ? 3 : 0 )    \
+    : ( 0xBE == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ?                           \
+	( ( ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xE0 ) == 0x80 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF0 ) == 0xA0 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xFA ) == 0xB2 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF7 ) == 0xB4 ) ) ? 3 : 0 )\
+    : ( ( 0xBF == NATIVE_TO_LATIN1(((U8*)s)[1]) ) && ( ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xCA ) == 0x82 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF7 ) == 0x84 ) || NATIVE_TO_LATIN1(((U8*)s)[2]) == 0xA4 || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF7 ) == 0xB4 ) ) ) ? 3 : 0 )\
+: ( ( ( 0xEF == NATIVE_TO_LATIN1(((U8*)s)[0]) ) && ( 0xAC == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ) && ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) <= 0x86 ) || ( 0x93 <= NATIVE_TO_LATIN1(((U8*)s)[2]) && NATIVE_TO_LATIN1(((U8*)s)[2]) <= 0x97 ) ) ) ? 3 : 0 )
+
+/*
+	PROBLEMATIC_LOCALE_FOLD: characters whose fold is problematic under locale
+
+	\p{_Perl_Problematic_Locale_Folds}
+*/
+/*** GENERATED CODE ***/
+#define is_PROBLEMATIC_LOCALE_FOLD_utf8(s)                                  \
+( ( ( NATIVE_TO_LATIN1(((U8*)s)[0]) & 0x80 ) == 0x00 ) ? 1                  \
+: ( ( NATIVE_TO_LATIN1(((U8*)s)[0]) & 0xFE ) == 0xC2 ) ?                    \
+    2                                                                       \
+: ( 0xC4 == NATIVE_TO_LATIN1(((U8*)s)[0]) || 0xC7 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?\
+    ( ( 0xB0 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xC5 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x89 == NATIVE_TO_LATIN1(((U8*)s)[1]) || 0xB8 == NATIVE_TO_LATIN1(((U8*)s)[1]) || 0xBF == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )\
+: ( 0xCA == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( ( NATIVE_TO_LATIN1(((U8*)s)[1]) & 0xFD ) == 0xBC ) ? 2 : 0 )        \
+: ( 0xCC == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( ( ( NATIVE_TO_LATIN1(((U8*)s)[1]) & 0xFE ) == 0x80 ) || NATIVE_TO_LATIN1(((U8*)s)[1]) == 0x87 || ( ( NATIVE_TO_LATIN1(((U8*)s)[1]) & 0xFD ) == 0x88 ) || NATIVE_TO_LATIN1(((U8*)s)[1]) == 0x8C || NATIVE_TO_LATIN1(((U8*)s)[1]) == 0xB1 ) ? 2 : 0 )\
+: ( 0xCD == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x82 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )                   \
+: ( 0xCE == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( ( ( NATIVE_TO_LATIN1(((U8*)s)[1]) & 0xDF ) == 0x9C ) || NATIVE_TO_LATIN1(((U8*)s)[1]) == 0xB9 ) ? 2 : 0 )\
+: ( 0xCF == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0x85 == NATIVE_TO_LATIN1(((U8*)s)[1]) || 0x89 == NATIVE_TO_LATIN1(((U8*)s)[1]) || 0x8E == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ? 2 : 0 )\
+: ( 0xE1 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( 0xBA == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ?                           \
+	( ( ( 0x96 <= NATIVE_TO_LATIN1(((U8*)s)[2]) && NATIVE_TO_LATIN1(((U8*)s)[2]) <= 0x9A ) || 0x9E == NATIVE_TO_LATIN1(((U8*)s)[2]) ) ? 3 : 0 )\
+    : ( 0xBD == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ?                           \
+	( ( 0xBC == NATIVE_TO_LATIN1(((U8*)s)[2]) ) ? 3 : 0 )               \
+    : ( ( 0xBF == NATIVE_TO_LATIN1(((U8*)s)[1]) ) && ( ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xFA ) == 0x92 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xEA ) == 0xA2 ) || ( ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xF7 ) == 0xB4 ) || NATIVE_TO_LATIN1(((U8*)s)[2]) == 0xBA ) ) ? 3 : 0 )\
+: ( 0xE2 == NATIVE_TO_LATIN1(((U8*)s)[0]) ) ?                               \
+    ( ( ( 0x84 == NATIVE_TO_LATIN1(((U8*)s)[1]) ) && ( 0xA6 == NATIVE_TO_LATIN1(((U8*)s)[2]) || ( NATIVE_TO_LATIN1(((U8*)s)[2]) & 0xFE ) == 0xAA ) ) ? 3 : 0 )\
+: ( ( ( 0xEF == NATIVE_TO_LATIN1(((U8*)s)[0]) ) && ( 0xAC == NATIVE_TO_LATIN1(((U8*)s)[1]) ) ) && ( NATIVE_TO_LATIN1(((U8*)s)[2]) <= 0x86 ) ) ? 3 : 0 )
+
+/*
 	PATWS: pattern white space
 
 	\p{PatWS}

@@ -523,12 +523,13 @@ Variant C<isFOO_utf8> is like C<isFOO_uni>, but the input is a pointer to a
 classification of just the first (possibly multi-byte) character in the string
 is tested.
 
-Variant C<isFOO_LC> is like the C<isFOO_A> and C<isFOO_L1> variants, but uses
-the C library function that gives the named classification instead of
-hard-coded rules.  For example, C<isDIGIT_LC()> returns the result of calling
-C<isdigit()>.  This means that the result is based on the current locale, which
-is what C<LC> in the name stands for.  FALSE is always returned if the input
-won't fit into an octet.
+Variant C<isFOO_LC> is like the C<isFOO_A> and C<isFOO_L1> variants, but the
+result is based on the current locale, which is what C<LC> in the name stands
+for.  If Perl can determine that the current locale is a UTF-8 locale, it uses
+the published Unicode rules; otherwise, it uses the C library function that
+gives the named classification.  For example, C<isDIGIT_LC()> when not in a
+UTF-8 locale returns the result of calling C<isdigit()>.  FALSE is always
+returned if the input won't fit into an octet.
 
 Variant C<isFOO_LC_uvchr> is like C<isFOO_LC>, but is defined on any UV.  It
 returns the same as C<isFOO_LC> for input code points less than 256, and
@@ -1230,29 +1231,34 @@ EXTCONST U32 PL_charclass[];
 #define toFOLD_A(c)  toFOLD(c)
 #define toTITLE_A(c) toTITLE(c)
 
-/* Use table lookup for speed; returns input itself if is out-of-range */
+/* Use table lookup for speed; returns the input itself if is out-of-range */
 #define toLOWER_LATIN1(c)    ((! FITS_IN_8_BITS(c))                        \
                              ? (c)                                         \
                              : PL_latin1_lc[ (U8) (c) ])
 #define toLOWER_L1(c)    toLOWER_LATIN1(c)  /* Synonym for consistency */
 
 /* Modified uc.  Is correct uc except for three non-ascii chars which are
- * all mapped to one of them, and these need special handling; returns input
- * itself if is out-of-range */
+ * all mapped to one of them, and these need special handling; returns the
+ * input itself if is out-of-range */
 #define toUPPER_LATIN1_MOD(c) ((! FITS_IN_8_BITS(c))                       \
                                ? (c)                                       \
                                : PL_mod_latin1_uc[ (U8) (c) ])
+#define IN_UTF8_CTYPE_LOCALE PL_in_utf8_CTYPE_locale
+
+/* Use foo_LC_uvchr() instead  of these for beyond the Latin1 range */
 
 /* For internal core Perl use only: the base macro for defining macros like
  * isALPHA_LC, which uses the current LC_CTYPE locale.  'c' is the code point
- * (0-255) to check.  'utf8_locale_classnum' is currently unused.  The code to
+ * (0-255) to check.  'utf8_locale_classnum' is like _CC_UPPER to indicate the  unused.  The code to
  * actually do the test this is passed in 'non_utf8'.  If 'c' is above 255, 0
  * is returned.  For accessing the full range of possible code points under
  * locale rules, use the macros based on _generic_LC_uvchr instead of this. */
 #define _generic_LC_base(c, utf8_locale_classnum, non_utf8)                    \
-              (! FITS_IN_8_BITS(c)                                             \
-               ? 0                                                             \
-                  : cBOOL(non_utf8))
+           (! FITS_IN_8_BITS(c)                                                \
+           ? 0                                                                 \
+           : IN_UTF8_CTYPE_LOCALE                                              \
+             ? cBOOL(PL_charclass[(U8) (c)] & _CC_mask(utf8_locale_classnum))  \
+             : cBOOL(non_utf8))
 
 /* For internal core Perl use only: a helper macro for defining macros like
  * isALPHA_LC.  'c' is the code point (0-255) to check.  The function name to
@@ -1272,11 +1278,25 @@ EXTCONST U32 PL_charclass[];
 
 #define _generic_toLOWER_LC(c, function, cast)  (! FITS_IN_8_BITS(c)           \
                                                 ? (c)                          \
+                                                : (IN_UTF8_CTYPE_LOCALE)       \
+                                                  ? PL_latin1_lc[ (U8) (c) ]   \
                                                 : function((cast)(c)))
+/* Note that the result can be larger than a byte in a UTF-8 locale.  It
+ * returns a single value, so can't adequately return the upper case of LATIN
+ * SMALL LETTER SHARP S (which should be a string of two values "SS";  instead
+ * it returns LATIN CAPITAL LETTER SHARP S. */
 #define _generic_toUPPER_LC(c, function, cast)                                 \
                     (! FITS_IN_8_BITS(c)                                       \
                     ? (c)                                                      \
-                      : function((cast)(c)))                                   \
+                    : (! IN_UTF8_CTYPE_LOCALE)                                 \
+                      ? function((cast)(c))                                    \
+                      : (((U8)(c)) == LATIN_SMALL_LETTER_SHARP_S)              \
+                        ? LATIN_CAPITAL_LETTER_SHARP_S                         \
+                        : (((U8)(c)) == MICRO_SIGN)                            \
+                          ? GREEK_CAPITAL_LETTER_MU                            \
+                          : (((U8)(c)) == LATIN_SMALL_LETTER_Y_WITH_DIAERESIS) \
+                            ? LATIN_CAPITAL_LETTER_Y_WITH_DIAERESIS            \
+                            : PL_mod_latin1_uc[ (U8) (c) ])
 
 /* Use the libc versions for these if available. */ 
 #if defined(HAS_ISASCII) && ! defined(USE_NEXT_CTYPE)
@@ -1334,6 +1354,7 @@ EXTCONST U32 PL_charclass[];
 #    define isWORDCHAR_LC(c) _generic_LC_underscore(c, _CC_WORDCHAR, isalnum)
 #    define isXDIGIT_LC(c)   _generic_LC(c, _CC_XDIGIT, isxdigit)
 
+/* XXX document all */
 
 #    define toLOWER_LC(c) _generic_toLOWER_LC((c), tolower, U8)
 #    define toUPPER_LC(c) _generic_toUPPER_LC((c), toupper, U8)

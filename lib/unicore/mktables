@@ -13849,12 +13849,56 @@ sub compile_perl() {
     my $any_folds = $perl->add_match_table("_Perl_Any_Folds",
                     Description => "Code points that particpate in some fold",
                     );
-    #
+    my $loc_problem_folds = $perl->add_match_table(
+               "_Perl_Problematic_Locale_Folds",
+               Description =>
+                   "Code points that are in some way problematic under locale",
+    );
+    $loc_problem_folds->add_range(0, 255);
+
+    my $folds_to_multi_char = $perl->add_match_table(
+         "_Perl_Folds_To_Multi_Char",
+         Description =>
+              "Code points whose fold is a string of more than one character",
+    );
+    
     foreach my $range (property_ref('Case_Folding')->ranges) {
-        $any_folds->add_range($range->start, $range->end);
+        my $start = $range->start;
+        my $end = $range->end;
+        $any_folds->add_range($start, $end);
         foreach my $hex_code_point (split " ", $range->value) {
             my $code_point = hex $hex_code_point;
             $any_folds->add_range($code_point, $code_point);
+        }
+
+        my @hex_code_points = split " ", $range->value;
+        if (@hex_code_points > 1) {
+            $folds_to_multi_char->add_range($start, $end);
+        }
+
+        my $before_loop_count = $loc_problem_folds->count;
+        while (1) {
+            foreach my $hex_code_point (@hex_code_points) {
+                my $code_point = hex $hex_code_point;
+
+                foreach my $from ($start .. $end) {
+                    if ($loc_problem_folds->contains($from)) {
+                        $loc_problem_folds->add_range($code_point, $code_point);
+                    local $to_trace = 1 if main::DEBUG;
+                    trace sprintf("%X..%X => %X", $start, $end, $code_point);
+                    }
+                }
+
+                if ($loc_problem_folds->contains($code_point)) {
+                    $loc_problem_folds->add_range($start, $end);
+                    local $to_trace = 1 if main::DEBUG;
+                    trace sprintf("%X..%X => %X", $start, $end, $code_point);
+                }
+            }
+            local $to_trace = 1 if main::DEBUG;
+            trace "count before loop $before_loop_count; after = ", $loc_problem_folds->count;
+            last if $before_loop_count >= $loc_problem_folds->count;
+            $before_loop_count = $loc_problem_folds->count;
         }
     }
 

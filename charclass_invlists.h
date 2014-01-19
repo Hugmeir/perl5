@@ -9171,7 +9171,7 @@ static const UV NonL1_Perl_Non_Final_Folds_invlist[] = {
 
 #ifndef PERL_IN_XSUB_RE
 
-static const UV _Perl_Multi_Char_Folds_invlist[] = {
+static const UV _Perl_Folds_To_Multi_Char_invlist[] = {
 	59,	/* Number of elements */
 	148565664, /* Version and data structure type */
 	1,	/* 0 if the list starts at 0;
@@ -11409,6 +11409,85 @@ static const UV _Perl_IDCont_invlist[] = {
 	195102,
 	917760,
 	918000
+};
+
+#endif
+
+#ifndef PERL_IN_XSUB_RE
+
+static const UV _Perl_Problematic_Locale_Folds_invlist[] = {
+	68,	/* Number of elements */
+	148565664, /* Version and data structure type */
+	0,	/* 0 if the list starts at 0;
+		   1 if it starts at the element beyond 0 */
+	0,
+	256,
+	304,
+	305,
+	329,
+	330,
+	376,
+	377,
+	383,
+	384,
+	496,
+	497,
+	700,
+	701,
+	702,
+	703,
+	768,
+	770,
+	775,
+	777,
+	778,
+	779,
+	780,
+	781,
+	817,
+	818,
+	834,
+	835,
+	924,
+	925,
+	953,
+	954,
+	956,
+	957,
+	965,
+	966,
+	969,
+	970,
+	974,
+	975,
+	7830,
+	7835,
+	7838,
+	7839,
+	8060,
+	8061,
+	8146,
+	8148,
+	8150,
+	8152,
+	8162,
+	8164,
+	8166,
+	8168,
+	8178,
+	8181,
+	8182,
+	8184,
+	8186,
+	8187,
+	8188,
+	8189,
+	8486,
+	8487,
+	8490,
+	8492,
+	64256,
+	64263
 };
 
 #endif

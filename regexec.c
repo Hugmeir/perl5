@@ -104,8 +104,11 @@ static const char* const non_utf8_target_but_utf8_required
 /* Valid only for non-utf8 strings: avoids the reginclass
  * call if there are no complications: i.e., if everything matchable is
  * straight forward in the bitmap */
-#define REGINCLASS(prog,p,c)  (ANYOF_FLAGS(p) ? reginclass(prog,p,c,c+1,0)   \
-					      : ANYOF_BITMAP_TEST(p,*(c)))
+#define REGINCLASS(prog,p,c)  (ANYOF_FLAGS(p) \
+                              ? reginclass(prog,p,c,c+1,0)                    \
+				: ANYOF_BITMAP_TEST(p,*(c))                   \
+                                  || (OP(p) == ANYOF_NON_UTF8_NON_ASCII_ALL      \
+                                      && ! isASCII(*(c))))
 
 /*
  * Forwards.
@@ -1496,6 +1499,7 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 
     /* We know what class it must start with. */
     switch (OP(c)) {
+    case ANYOF_NON_UTF8_NON_ASCII_ALL:
     case ANYOF:
         if (utf8_target) {
             REXEC_FBC_UTF8_CLASS_SCAN(
@@ -1537,7 +1541,7 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
         goto do_exactf_non_utf8;
 
     case EXACTFL:
-        if (is_utf8_pat || utf8_target) {
+        if (is_utf8_pat || utf8_target || IN_UTF8_CTYPE_LOCALE) {
             utf8_fold_flags = FOLDEQ_UTF8_LOCALE;
             goto do_exactf_utf8;
         }
@@ -3425,6 +3429,7 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
     dVAR;
 
     U8 *pat = (U8*)STRING(text_node);
+    U8 folded[UTF8_MAX_FOLD_CHAR_EXPAND * UTF8_MAXBYTES_CASE + 1];
 
     if (OP(text_node) == EXACT) {
 
@@ -3444,13 +3449,48 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
             c2 = c1 = valid_utf8_to_uvchr(pat, NULL);
         }
     }
-    else /* an EXACTFish node */
-         if ((is_utf8_pat
-                    && is_MULTI_CHAR_FOLD_utf8_safe(pat,
-                                                    pat + STR_LEN(text_node)))
-             || (!is_utf8_pat
-                    && is_MULTI_CHAR_FOLD_latin1_safe(pat,
-                                                    pat + STR_LEN(text_node))))
+    else { /* an EXACTFish node */
+        U8 *pat_end = pat + STR_LEN(text_node);
+        if (OP(text_node) == EXACTFL) {
+
+            if (! is_utf8_pat) {
+                if (IN_UTF8_CTYPE_LOCALE && *pat == LATIN_SMALL_LETTER_SHARP_S)
+                {
+                    folded[0] = folded[1] = 's';
+                    pat = folded;
+                    pat_end = folded + 2;
+                }
+            }
+            else if (is_PROBLEMATIC_LOCALE_FOLD_utf8(pat)) {
+                U8 *s = pat;
+                U8 *d = folded;
+                int i;
+
+                for (i = 0; i < UTF8_MAX_FOLD_CHAR_EXPAND && s < pat_end; i++) {
+                    if (isASCII(*s)) {
+                        *(d++) = toFOLD_LC(*s);
+                        s++;
+                    }
+                    else {
+                        STRLEN len;
+                        _to_utf8_fold_flags(s,
+                                            d,
+                                            &len,
+                                            FOLD_FLAGS_FULL | FOLD_FLAGS_LOCALE,
+                                            NULL);
+                        d += len;
+                        s += UTF8SKIP(s);
+                    }
+                }
+
+                pat = folded;
+                pat_end = d;
+            }
+        }
+
+         if ((is_utf8_pat && is_MULTI_CHAR_FOLD_utf8_safe(pat, pat_end))
+             || (!is_utf8_pat && is_MULTI_CHAR_FOLD_latin1_safe(pat, pat_end)))
+            /* XXX indent */
     {
         /* Multi-character folds require more context to sort out.  Also
          * PL_utf8_foldclosures used below doesn't handle them, so have to be
@@ -3490,7 +3530,7 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
             }
             else {  /* Does participate in folds */
                 AV* list = (AV*) *listp;
-                if (av_len(list) != 1) {
+                if (av_tindex(list) != 1) {
 
                     /* If there aren't exactly two folds to this, it is outside
                      * the scope of this function */
@@ -3510,13 +3550,13 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
                     c2 = SvUV(*c_p);
 
                     /* Folds that cross the 255/256 boundary are forbidden if
-                     * EXACTFL, or EXACTFA and one is ASCIII.  Since the
-                     * pattern character is above 256, and its only other match
-                     * is below 256, the only legal match will be to itself.
-                     * We have thrown away the original, so have to compute
-                     * which is the one above 255 */
+                     * EXACTFL (and isnt a UTF8 locale), or EXACTFA and one is
+                     * ASCIII.  Since the pattern character is above 256, and
+                     * its only other match is below 256, the only legal match
+                     * will be to itself.  We have thrown away the original, so
+                     * have to compute which is the one above 255 */
                     if ((c1 < 256) != (c2 < 256)) {
-                        if (OP(text_node) == EXACTFL
+                        if ((OP(text_node) == EXACTFL && ! IN_UTF8_CTYPE_LOCALE)
                             || ((OP(text_node) == EXACTFA
                                  || OP(text_node) == EXACTFA_NO_TRIE)
                                 && (isASCII(c1) || isASCII(c2))))
@@ -3535,7 +3575,7 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
         else /* Here, c1 is < 255 */
              if (utf8_target
                  && HAS_NONLATIN1_FOLD_CLOSURE(c1)
-                 && OP(text_node) != EXACTFL
+                 && ( ! (OP(text_node) == EXACTFL && ! IN_UTF8_CTYPE_LOCALE))
                  && ((OP(text_node) != EXACTFA
                       && OP(text_node) != EXACTFA_NO_TRIE)
                      || ! isASCII(c1)))
@@ -3584,6 +3624,7 @@ S_setup_EXACTISH_ST_c1_c2(pTHX_ const regnode * const text_node, int *c1p,
                     assert(0); /* NOTREACHED */
             }
         }
+    }
     }
 
     /* Here have figured things out.  Set up the returns */
@@ -4279,7 +4320,7 @@ S_regmatch(pTHX_ regmatch_info *reginfo, char *startpos, regnode *prog)
 	    s = STRING(scan);
 	    ln = STR_LEN(scan);
 
-	    if (utf8_target || is_utf8_pat || state_num == EXACTFU_SS) {
+	    if (utf8_target || is_utf8_pat || state_num == EXACTFU_SS || (state_num == EXACTFL && IN_UTF8_CTYPE_LOCALE)) {
 	      /* Either target or the pattern are utf8, or has the issue where
 	       * the fold lengths may differ. */
 		const char * const l = locinput;
@@ -4395,6 +4436,7 @@ S_regmatch(pTHX_ regmatch_info *reginfo, char *startpos, regnode *prog)
 		    sayNO;
 	    break;
 
+        case ANYOF_NON_UTF8_NON_ASCII_ALL:
 	case ANYOF:  /*  /[abc]/       */
             if (NEXTCHR_IS_EOS)
                 sayNO;
@@ -4887,8 +4929,8 @@ S_regmatch(pTHX_ regmatch_info *reginfo, char *startpos, regnode *prog)
 
 	    s = reginfo->strbeg + ln;
 	    if (type != REF	/* REF can do byte comparison */
-		&& (utf8_target || type == REFFU))
-	    { /* XXX handle REFFL better */
+		&& (utf8_target || type == REFFU || type == REFFL))
+	    {
 		char * limit = reginfo->strend;
 
 		/* This call case insensitively compares the entire buffer
@@ -7011,6 +7053,7 @@ S_regrepeat(pTHX_ regexp *prog, char **startposp, const regnode *p,
 	}
 	break;
     }
+    case ANYOF_NON_UTF8_NON_ASCII_ALL:
     case ANYOF:
 	if (utf8_target) {
 	    while (hardcount < max
@@ -7371,7 +7414,8 @@ S_core_regclass_swash(pTHX_ const regexp *prog, const regnode* node, bool doinit
 	    if (ary[1] && SvROK(ary[1])) {
 		sw = ary[1];
 	    }
-	    else if (si && doinit) {
+	    else if (doinit && ((si && si != &PL_sv_undef)
+                                 || (invlist && invlist != &PL_sv_undef))) {
 
 		sw = _core_swash_init("utf8", /* the utf8 package */
 				      "", /* nameless */
@@ -7454,7 +7498,7 @@ S_reginclass(pTHX_ regexp * const prog, const regnode * const n, const U8* const
     if (c < 256) {
 	if (ANYOF_BITMAP_TEST(n, c))
 	    match = TRUE;
-	else if (flags & ANYOF_NON_UTF8_NON_ASCII_ALL
+	else if (OP(n) == ANYOF_NON_UTF8_NON_ASCII_ALL
 		&& ! utf8_target
 		&& ! isASCII(c))
 	{
@@ -7515,6 +7559,14 @@ S_reginclass(pTHX_ regexp * const prog, const regnode * const n, const U8* const
                 }
 	    }
 	}
+    }
+
+    if (! match
+        && (flags & ANYOF_LOC_FOLD)
+        && IN_UTF8_CTYPE_LOCALE
+        && ANYOF_UTF8_LOCALE_INVLIST(n))
+    {
+        match = _invlist_contains_cp(ANYOF_UTF8_LOCALE_INVLIST(n), c);
     }
 
     /* If the bitmap didn't (or couldn't) match, and something outside the

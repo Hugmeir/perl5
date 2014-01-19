@@ -2093,6 +2093,7 @@ setlocale(&POSIX::LC_ALL, "C");
     use feature 'unicode_strings';
 
     foreach my $function ("uc", "ucfirst", "lc", "lcfirst", "fc") {
+        last;
         my @list;   # List of code points to test for $function
 
         # Used to calculate the changed case for ASCII characters by using the

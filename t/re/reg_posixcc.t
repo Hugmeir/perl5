@@ -75,6 +75,9 @@ sub rangify {
 
 # The bug is only fixed for /u
 use feature 'unicode_strings';
+use POSIX qw(locale_h);
+            use locale;
+POSIX::setlocale(LC_ALL, "en_US.UTF-8");
 
 my $description = "";
 while (@pats) {
@@ -86,7 +89,7 @@ while (@pats) {
     foreach my $b (0..255) {
         my %got;
         my $display_b = sprintf("\\x%02X", $b);
-        for my $type ('utf8','not-utf8') {
+        for my $type ('utf8','not-utf8', 'utf8_locale') {
             my $str=chr($b).chr($b);
             if ($type eq 'utf8') {
                 $str.=chr(256);

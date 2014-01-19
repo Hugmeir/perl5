@@ -13470,6 +13470,7 @@ perl_clone_using(PerlInterpreter *proto_perl, UV flags,
 
     /* Did the locale setup indicate UTF-8? */
     PL_utf8locale	= proto_perl->Iutf8locale;
+    PL_in_utf8_CTYPE_locale = proto_perl->Iin_utf8_CTYPE_locale;
     /* Unicode features (see perlrun/-C) */
     PL_unicode		= proto_perl->Iunicode;
 
@@ -13800,7 +13801,9 @@ perl_clone_using(PerlInterpreter *proto_perl, UV flags,
     PL_AboveLatin1	= sv_dup_inc(proto_perl->IAboveLatin1, param);
 
     PL_NonL1NonFinalFold = sv_dup_inc(proto_perl->INonL1NonFinalFold, param);
-    PL_HasMultiCharFold= sv_dup_inc(proto_perl->IHasMultiCharFold, param);
+    PL_HasMultiCharFold = sv_dup_inc(proto_perl->IHasMultiCharFold, param);
+    PL_problematic_locale_folds
+                    = sv_dup_inc(proto_perl->Iproblematic_locale_folds, param);
 
     /* utf8 character class swashes */
     for (i = 0; i < POSIX_SWASH_COUNT; i++) {

@@ -243,13 +243,24 @@ Perl_new_ctype(pTHX_ const char *newctype)
 
     PERL_ARGS_ASSERT_NEW_CTYPE;
 
+    PL_in_utf8_CTYPE_locale = is_cur_LC_category_utf8(LC_CTYPE);
+
+    /* A UTF-8 locale gets standard rules.  But note that code still has to
+     * handle this specially because of the three problematic code points */
+    if (PL_in_utf8_CTYPE_locale) {
+        Copy(PL_fold_latin1, PL_fold_locale, 256, U8);
+    }
+    else {
+    /* XXX indent */
+
     for (i = 0; i < 256; i++) {
 	if (isUPPER_LC((U8) i))
-	    PL_fold_locale[i] = toLOWER_LC((U8) i);
+	    PL_fold_locale[i] = (U8) toLOWER_LC((U8) i);
 	else if (isLOWER_LC((U8) i))
-	    PL_fold_locale[i] = toUPPER_LC((U8) i);
+	    PL_fold_locale[i] = (U8) toUPPER_LC((U8) i);
 	else
-	    PL_fold_locale[i] = i;
+	    PL_fold_locale[i] = (U8) i;
+    }
     }
 
 #endif /* USE_LOCALE_CTYPE */
@@ -677,7 +688,7 @@ S_is_cur_LC_category_utf8(pTHX_ int category)
     /* Returns TRUE if the current locale for 'category' is UTF-8; FALSE
      * otherwise. 'category' may not be LC_ALL.  If the platform doesn't have
      * nl_langinfo(), this employs a heuristic, which hence could give the
-     * wrong result.  It errs on the side of not being a UTF-8 locale. */
+     * wrong result.  It XXX errs on the side of not being a UTF-8 locale. */
 
     char *save_input_locale = NULL;
     STRLEN final_pos;
@@ -699,14 +710,14 @@ S_is_cur_LC_category_utf8(pTHX_ int category)
         return FALSE;
     }
 
-#if defined(HAS_NL_LANGINFO) && defined(CODESET) && defined(USE_LOCALE_CTYPE)
+#if defined(USE_LOCALE_CTYPE) && (defined(MB_CUR_MAX) || defined(HAS_NL_LANGINFO) && defined(CODESET))
 
-    { /* Next try nl_langinfo if available */
+    { /* Next try MB_CUR_MAX or nl_langinfo if available */
 
         char *save_ctype_locale = NULL;
-        char *codeset = NULL;
+        bool is_utf8;
 
-        if (category != LC_CTYPE) { /* nl_langinfo works only on LC_CTYPE */
+        if (category != LC_CTYPE) { /* These work only on LC_CTYPE */
 
             /* Get the current LC_CTYPE locale */
             save_ctype_locale = stdize_locale(savepv(setlocale(LC_CTYPE, NULL)));
@@ -729,11 +740,28 @@ S_is_cur_LC_category_utf8(pTHX_ int category)
         }
 
         /* Here the current LC_CTYPE is set to the locale of the category whose
-         * information is desired.  This means that nl_langinfo() should give
-         * the correct results */
-        codeset = savepv(nl_langinfo(CODESET));
+         * information is desired.  This means that MB_CUR_LEN and
+         * nl_langinfo() should give the correct results */
+
+#   ifdef MB_CUR_LEN
+
+        /* If we switched LC_CTYPE, switch back */
+        if (save_ctype_locale) {
+            setlocale(LC_CTYPE, save_ctype_locale);
+            Safefree(save_ctype_locale);
+        }
+
+        is_utf8 = MB_CUR_LEN >= 4;
+
+        Safefree(save_input_locale);
+        return is_utf8;
+#else
+#   if defined(HAS_NL_LANGINFO) && defined(CODESET)
+        {
+            /* XXX indent */
+
+        char *codeset = savepv(nl_langinfo(CODESET));
         if (codeset) {
-            bool is_utf8;
 
             /* If we switched LC_CTYPE, switch back */
             if (save_ctype_locale) {
@@ -748,8 +776,12 @@ S_is_cur_LC_category_utf8(pTHX_ int category)
             Safefree(save_input_locale);
             return is_utf8;
         }
+        }
 
+#   endif
+#   endif
     }
+
   cant_use_nllanginfo:
 
 #endif /* HAS_NL_LANGINFO etc */

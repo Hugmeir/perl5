@@ -3336,6 +3336,7 @@ struct regnode_charclass_class;
 /* A hopefully less confusing name.  The sub-classes are all Posix classes only
  * used under /l matching */
 typedef struct regnode_charclass_class regnode_charclass_posixl;
+typedef struct regnode_charclass_posixl_fold regnode_charclass_posixl_fold;
 
 typedef struct regnode_ssc regnode_ssc;
 typedef struct RExC_state_t RExC_state_t;
@@ -4786,6 +4787,7 @@ typedef enum {
 				0x40000000
 				0x80000000
 				 */
+#define HINT_LOCALE_NOT_CTYPE	0x20000000 /* locale ':not_ctype' pragma */
 
 /* The following are stored in $^H{sort}, not in PL_hints */
 #define HINT_SORT_SORT_BITS	0x000000FF /* allow 256 different ones */

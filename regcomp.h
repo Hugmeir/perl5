@@ -170,7 +170,7 @@ struct regnode_2 {
 };
 
 
-#define ANYOF_BITMAP_SIZE	32	/* 256 b/(8 b/B) */
+#define ANYOF_BITMAP_SIZE	(256 / 8)   /* 8 bits/Byte */
 
 /* also used by trie */
 struct regnode_charclass {
@@ -191,9 +191,23 @@ struct regnode_charclass_class {
     U32 classflags;	                        /* and run-time */
 };
 
-/* Synthetic start class; is a regnode_charclass_class plus an SV*.  Note that
- * the 'next_off' field is unused, as the SSC stands alone, so there is never a
- * next node. */
+/* like above, but also has folds that are used only if the runtime locale is
+ * UTF-8. */
+struct regnode_charclass_posixl_fold {
+    U8	flags;				/* ANYOF_POSIXL bit must go here */
+    U8  type;
+    U16 next_off;
+    U32 arg1;				/* used as ptr in S_regclass */
+    char bitmap[ANYOF_BITMAP_SIZE];	/* both compile-time */
+    U32 classflags;	                /* and run-time */
+    SV* utf8_locale_list;               /* list of code points matched by folds
+                                           in a UTF-8 locale */
+};
+
+/* A synthetic start class; is a regnode_charclass_posixl_fold, plus an extra
+ * SV*, used only during its construction and which is not used by regexec.c.
+ * Note that the 'next_off' field is unused, as the SSC stands alone, so there
+ * is never a next node. */
 struct regnode_ssc {
     U8	flags;				/* ANYOF_POSIXL bit must go here */
     U8  type;
@@ -201,6 +215,8 @@ struct regnode_ssc {
     U32 arg1;				/* used as ptr in S_regclass */
     char bitmap[ANYOF_BITMAP_SIZE];	/* both compile-time */
     U32 classflags;	                /* and run-time */
+    SV* utf8_locale_list;               /* list of code points matched by folds
+                                           in a UTF-8 locale */
     SV* invlist;                        /* list of code points matched */
 };
 
@@ -368,18 +384,15 @@ struct regnode_ssc {
  * */
 #define ANYOF_WARN_SUPER        0x10
 
-/* Can match something outside the bitmap that isn't in utf8 */
+/* HAS Can match something outside the bitmap that isn't in utf8 */
 #define ANYOF_NONBITMAP_NON_UTF8 0x20
 
 /* Matches every code point 0x100 and above*/
 #define ANYOF_ABOVE_LATIN1_ALL	 0x40
 #define ANYOF_UNICODE_ALL	 ANYOF_ABOVE_LATIN1_ALL
 
-/* Match all Latin1 characters that aren't ASCII when the target string is not
- * in utf8. */
-#define ANYOF_NON_UTF8_NON_ASCII_ALL 0x80
-
-#define ANYOF_FLAGS_ALL		(0xff)
+#define ANYOF_KHW 0x80
+#define ANYOF_FLAGS_ALL		(0xFf)
 
 #define ANYOF_LOCALE_FLAGS (ANYOF_LOCALE                        \
                            |ANYOF_LOC_FOLD                      \
@@ -470,6 +483,7 @@ struct regnode_ssc {
 #define ANYOF_SIZE		(sizeof(struct regnode_charclass))
 #define ANYOF_POSIXL_SIZE	(sizeof(regnode_charclass_posixl))
 #define ANYOF_CLASS_SIZE	ANYOF_POSIXL_SIZE
+#define ANYOF_POSIXL_FOLD_SIZE  (sizeof(regnode_charclass_posixl_fold))
 
 #define ANYOF_FLAGS(p)		((p)->flags)
 
@@ -522,7 +536,10 @@ struct regnode_ssc {
 
 #define ANYOF_SKIP		((ANYOF_SIZE - 1)/sizeof(regnode))
 #define ANYOF_POSIXL_SKIP	((ANYOF_POSIXL_SIZE - 1)/sizeof(regnode))
+#define ANYOF_POSIXL_FOLD_SKIP  ((ANYOF_POSIXL_FOLD_SIZE - 1)/sizeof(regnode))
 #define ANYOF_CLASS_SKIP	ANYOF_POSIXL_SKIP
+
+#define ANYOF_UTF8_LOCALE_INVLIST(node) (((regnode_charclass_posixl_fold*) (node))->utf8_locale_list)
 
 /*
  * Utility definitions.

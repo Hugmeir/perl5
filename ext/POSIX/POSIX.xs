@@ -559,14 +559,17 @@ static XSPROTO(is_common)
     {
 	dXSTARG;
 	STRLEN	len;
+	/*int	RETVAL = 0;*/
 	int	RETVAL;
 	unsigned char *s = (unsigned char *) SvPV(ST(0), len);
 	unsigned char *e = s + len;
 	isfunc_t isfunc = (isfunc_t) XSANY.any_dptr;
 
+        /*if (e > s) {*/
 	for (RETVAL = 1; RETVAL && s < e; s++)
 	    if (!isfunc(*s))
 		RETVAL = 0;
+        /*}*/
 	XSprePUSH;
 	PUSHi((IV)RETVAL);
     }

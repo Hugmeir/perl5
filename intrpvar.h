@@ -230,6 +230,7 @@ PERLVARI(I, dumpindent,	U16,	4)	/* number of blanks per dump
 PERLVAR(I, exit_flags,	U8)		/* was exit() unexpected, etc. */
 
 PERLVAR(I, utf8locale,	bool)		/* utf8 locale detected */
+PERLVAR(I, in_utf8_CTYPE_locale, bool)
 
 PERLVARA(I, colors,6,	char *)		/* values from PERL_RE_COLORS env var */
 
@@ -720,6 +721,10 @@ PERLVARI(I, utf8_foldclosures, HV *, NULL)
 /* List of characters that participate in folds (except marks, etc in
  * multi-char folds) */
 PERLVARI(I, utf8_foldable, SV *, NULL)
+
+/* List of characters for which folding is problematic under locale rules
+ * (in most cases because some component crosses the 255/256 boundary) */
+PERLVARI(I, problematic_locale_folds, SV *, NULL)
 
 PERLVAR(I, custom_ops,	HV *)		/* custom op registrations */
 

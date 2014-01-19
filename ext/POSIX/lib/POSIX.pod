@@ -589,8 +589,9 @@ see L<perlfunc/gmtime>.
 
 =item isalnum
 
-This is identical to the C function, except that it can apply to a
-single character or to a whole string.  Note that locale settings may
+Returns true if the input string is non-empty and the C function
+returns true for all characters in the string.
+Note that locale settings may
 affect what characters are considered C<isalnum>.  Does not work on
 Unicode characters code point 256 or higher.  Consider using regular
 expressions and the C</[[:alnum:]]/> construct instead, or possibly

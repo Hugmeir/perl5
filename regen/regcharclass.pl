@@ -5,13 +5,15 @@ use 5.008;
 use warnings;
 use warnings FATAL => 'all';
 no warnings 'experimental::autoderef';
-use Text::Wrap qw(wrap);
+#use Text::Wrap qw(wrap);
 use Data::Dumper;
 $Data::Dumper::Useqq= 1;
 our $hex_fmt= "0x%02X";
 
 sub DEBUG () { 0 }
 $|=1 if DEBUG;
+
+# We can use macros from handy.h for the Latin1 members
 
 sub ASCII_PLATFORM { (ord('A') == 65) }
 
@@ -783,7 +785,7 @@ sub calculate_mask(@) {
     my @final_results;
     foreach my $count (reverse sort { $a <=> $b } keys %hash) {
         my $need = 2 ** $count;     # Need 8 values for 3 differing bits, etc
-        foreach my $bits (sort keys $hash{$count}) {
+        foreach my $bits (sort keys %{$hash{$count}}) {
 
             print STDERR __LINE__, ": For $count bit(s) difference ($bits), need $need; have ", scalar @{$hash{$count}{$bits}}, "\n" if DEBUG;
 
@@ -871,7 +873,7 @@ sub calculate_mask(@) {
     # individually.
     my @individuals;
     foreach my $count (reverse sort { $a <=> $b } keys %hash) {
-        foreach my $bits (sort keys $hash{$count}) {
+        foreach my $bits (sort keys %{$hash{$count}}) {
             foreach my $remaining (@{$hash{$count}{$bits}}) {
 
                 # If we already know about this value, just ignore it.
@@ -1512,6 +1514,14 @@ MULTI_CHAR_FOLD: multi-char strings that are folded to by a single character
 
 &regcharclass_multi_char_folds::multi_char_folds(0)
 # 0 => Latin1-only
+
+FOLDS_TO_MULTI: characters that fold to multi-char strings
+=> UTF8 :fast
+\p{_Perl_Folds_To_Multi_Char}
+
+PROBLEMATIC_LOCALE_FOLD : characters whose fold is problematic under locale
+=> UTF8 :fast
+\p{_Perl_Problematic_Locale_Folds}
 
 PATWS: pattern white space
 => generic generic_non_low cp : fast safe

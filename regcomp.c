@@ -1006,7 +1006,7 @@ S_ssc_is_cp_posixl_init(pTHX_ const RExC_state_t *pRExC_state,
 
 STATIC SV*
 S_get_ANYOF_cp_list_for_ssc(pTHX_ const RExC_state_t *pRExC_state,
-                                  const regnode_charclass_posixl* const node)
+                               const regnode_charclass_posixl_fold* const node)
 {
     /* Returns a mortal inversion list defining which code points are matched
      * by 'node', which is of type ANYOF.  Handles complementing the result if
@@ -1067,7 +1067,7 @@ S_get_ANYOF_cp_list_for_ssc(pTHX_ const RExC_state_t *pRExC_state,
 
     /* If this can match all upper Latin1 code points, have to add them
      * as well */
-    if (ANYOF_FLAGS(node) & ANYOF_NON_UTF8_NON_ASCII_ALL) {
+    if (OP(node) == ANYOF_NON_UTF8_NON_ASCII_ALL) {
         _invlist_union(invlist, PL_UpperLatin1, &invlist);
     }
 
@@ -1078,6 +1078,18 @@ S_get_ANYOF_cp_list_for_ssc(pTHX_ const RExC_state_t *pRExC_state,
 
     if (ANYOF_FLAGS(node) & ANYOF_INVERT) {
         _invlist_invert(invlist);
+    }
+    else if (ANYOF_FLAGS(node) & ANYOF_LOC_FOLD) {
+        _invlist_union(invlist, PL_Latin1, &invlist);
+    }
+
+    if (ANYOF_FLAGS(node) & ANYOF_LOC_FOLD) {
+    if (ANYOF_UTF8_LOCALE_INVLIST(node)) {
+        _invlist_union_maybe_complement_2nd(invlist,
+                                            ANYOF_UTF8_LOCALE_INVLIST(node),
+                                            ANYOF_FLAGS(node) & ANYOF_INVERT,
+                                            &invlist);
+    }
     }
 
     return invlist;
@@ -1151,7 +1163,7 @@ S_ssc_and(pTHX_ const RExC_state_t *pRExC_state, regnode_ssc *ssc,
     }
     else {
         anded_cp_list = get_ANYOF_cp_list_for_ssc(pRExC_state,
-                                        (regnode_charclass_posixl*) and_with);
+                                     (regnode_charclass_posixl_fold*) and_with);
         anded_flags = ANYOF_FLAGS(and_with) & ANYOF_COMMON_FLAGS;
     }
 
@@ -1228,7 +1240,7 @@ S_ssc_and(pTHX_ const RExC_state_t *pRExC_state, regnode_ssc *ssc,
              * standard, in particular almost everything by Microsoft.
              * The loop below just changes e.g., \w into \W and vice versa */
 
-            regnode_charclass_posixl temp;
+            regnode_charclass_posixl_fold temp;
             int add = 1;    /* To calculate the index of the complement */
 
             ANYOF_POSIXL_ZERO(&temp);
@@ -1300,7 +1312,7 @@ S_ssc_or(pTHX_ const RExC_state_t *pRExC_state, regnode_ssc *ssc,
     }
     else {
         ored_cp_list = get_ANYOF_cp_list_for_ssc(pRExC_state,
-                                        (regnode_charclass_posixl*) or_with);
+                                     (regnode_charclass_posixl_fold*) or_with);
         ored_flags = ANYOF_FLAGS(or_with) & ANYOF_COMMON_FLAGS;
     }
 
@@ -1443,6 +1455,7 @@ S_ssc_finalize(pTHX_ RExC_state_t *pRExC_state, regnode_ssc *ssc)
     populate_ANYOF_from_invlist( (regnode *) ssc, &invlist);
 
     set_ANYOF_arg(pRExC_state, (regnode *) ssc, invlist, NULL, NULL, FALSE);
+    ANYOF_FLAGS(ssc) &= ~ANYOF_LOC_FOLD;
 
     assert(! (ANYOF_FLAGS(ssc) & ANYOF_LOCALE) || RExC_contains_locale);
 }
@@ -3087,7 +3100,7 @@ S_make_trie_failtable(pTHX_ RExC_state_t *pRExC_state, regnode *source,  regnode
  * fold.  *min_subtract is set to the total delta of the input nodes.
  *
  * And *has_exactf_sharp_s is set to indicate whether or not the node is EXACTF
- * and contains LATIN SMALL LETTER SHARP S
+ * (or non-UTF8 and EXACTFL), and contains LATIN SMALL LETTER SHARP S
  *
  * This is as good a place as any to discuss the design of handling these
  * multi-character fold sequences.  It's been wrong in Perl for a very long
@@ -3119,11 +3132,12 @@ S_make_trie_failtable(pTHX_ RExC_state_t *pRExC_state, regnode *source,  regnode
  *      EXACTFU node without UTF-8 involvement doesn't have to concern itself
  *      with length changes, and so can be processed faster.  regexec.c takes
  *      advantage of this.  Generally, an EXACTFish node that is in UTF-8 is
- *      pre-folded by regcomp.c.  This saves effort in regex matching.
- *      However, the pre-folding isn't done for non-UTF8 patterns because the
- *      fold of the MICRO SIGN requires UTF-8, and we don't want to slow things
- *      down by forcing the pattern into UTF8 unless necessary.  Also what
- *      EXACTF and EXACTFL nodes fold to isn't known until runtime.  The fold
+ *      pre-folded by regcomp.c (except EXACTFL whose folds aren't known until
+ *      runtime).  This saves effort in regex matching.  However, the
+ *      pre-folding isn't done for non-UTF8 patterns because the fold of the
+ *      MICRO SIGN requires UTF-8, and we don't want to slow things down by
+ *      forcing the pattern into UTF8 unless necessary.  Also what EXACTF (and,
+ *      again, EXACTFL) nodes fold to isn't known until runtime.  The fold
  *      possibilities for the non-UTF8 patterns are quite simple, except for
  *      the sharp s.  All the ones that don't involve a UTF-8 target string are
  *      members of a fold-pair, and arrays are set up for all of them so that
@@ -3131,33 +3145,37 @@ S_make_trie_failtable(pTHX_ RExC_state_t *pRExC_state, regnode *source,  regnode
  *      this file makes sure that in EXACTFU nodes, the sharp s gets folded to
  *      'ss', even if the pattern isn't UTF-8.  This avoids the issues
  *      described in the next item.
- * 3)   A problem remains for the sharp s in EXACTF and EXACTFA nodes when the
- *      pattern isn't in UTF-8. (BTW, there cannot be an EXACTF node with a
- *      UTF-8 pattern.)  An assumption that the optimizer part of regexec.c
- *      (probably unwittingly, in Perl_regexec_flags()) makes is that a
- *      character in the pattern corresponds to at most a single character in
+ * 3)   A problem remains for the sharp s in EXACTF, EXACTFA, and EXACTFL nodes
+ *      when the pattern isn't in UTF-8. (BTW, there cannot be an EXACTF node
+ *      with a UTF-8 pattern.)  An assumption that the optimizer part of
+ *      regexec.c (probably unwittingly, in Perl_regexec_flags()) makes is that
+ *      a character in the pattern corresponds to at most a single character in
  *      the target string.  (And I do mean character, and not byte here, unlike
  *      other parts of the documentation that have never been updated to
- *      account for multibyte Unicode.)  sharp s in EXACTF nodes can match the
- *      two character string 'ss'; in EXACTFA nodes it can match
- *      "\x{17F}\x{17F}".  These violate the assumption, and they are the only
+ *      account for multibyte Unicode.)  sharp s in EXACTF and EXACTFL nodes
+ *      can match the two character string 'ss'; in EXACTFA nodes it can match
+ *      "\x{17F}\x{17F}".
+ *      These violate the assumption, and they are the only
  *      instances where it is violated.  I'm reluctant to try to change the
  *      assumption, as the code involved is impenetrable to me (khw), so
  *      instead the code here punts.  This routine examines (when the pattern
- *      isn't UTF-8) EXACTF and EXACTFA nodes for the sharp s, and returns a
- *      boolean indicating whether or not the node contains a sharp s.  When it
- *      is true, the caller sets a flag that later causes the optimizer in this
- *      file to not set values for the floating and fixed string lengths, and
- *      thus avoids the optimizer code in regexec.c that makes the invalid
- *      assumption.  Thus, there is no optimization based on string lengths for
- *      non-UTF8-pattern EXACTF and EXACTFA nodes that contain the sharp s.
- *      (The reason the assumption is wrong only in these two cases is that all
- *      other non-UTF-8 folds are 1-1; and, for UTF-8 patterns, we pre-fold all
- *      other folds to their expanded versions.  We can't prefold sharp s to
- *      'ss' in EXACTF nodes because we don't know at compile time if it
- *      actually matches 'ss' or not.  It will match iff the target string is
- *      in UTF-8, unlike the EXACTFU nodes, where it always matches; and
- *      EXACTFA and EXACTFL where it never does.  In an EXACTFA node in a UTF-8
+ *      isn't UTF-8) EXACTF, EXACTFA, and EXACTFL nodes for the sharp s, and
+ *      returns a boolean indicating whether or not the node contains a sharp
+ *      s.  When it is true, the caller sets a flag that later causes the
+ *      optimizer in this file to not set values for the floating and fixed
+ *      string lengths, and thus avoids the optimizer code in regexec.c that
+ *      makes the invalid assumption.  Thus, there is no optimization based on
+ *      string lengths for non-UTF8-pattern EXACTF, EXACTFA, and EXACTFL nodes
+ *      that contain the sharp s.  (The reason the assumption is wrong only in
+ *      these cases is that all other non-UTF-8 folds are 1-1; and, for UTF-8
+ *      patterns, we pre-fold all other folds to their expanded versions.  We
+ *      can't prefold sharp s to 'ss' in EXACTF and EXACTFL nodes because we
+ *      don't know at compile time if it actually matches 'ss' or not.
+ *      For EXACTF nodes it will match iff the
+ *      target string is in UTF-8, and for EXACTFL nodes it will match iff the
+ *      locale at the time of match is a UTF-8 locale.  This is in contrast to
+ *      EXACTFU *      nodes, where it always matches; and
+ *      EXACTFA where it never does.  In an EXACTFA node in a UTF-8
  *      pattern, sharp s is folded to "\x{17F}\x{17F}, avoiding the problem;
  *      but in a non-UTF8 pattern, folding it to that above-Latin1 string would
  *      require the pattern to be forced into UTF-8, the overhead of which we
@@ -3269,15 +3287,50 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
      * hence missed).  The sequences only happen in folding, hence for any
      * non-EXACT EXACTish node */
     if (OP(scan) != EXACT) {
-        const U8 * const s0 = (U8*) STRING(scan);
-        const U8 * s = s0;
-        const U8 * const s_end = s0 + STR_LEN(scan);
+        U8* s0 = (U8*) STRING(scan);
+        U8* s = s0;
+        U8* s_end = s0 + STR_LEN(scan);
+
+        int total_count = 0;  /* Total number of characters that multi-char
+                                 folds expand to */
 
 	/* One pass is made over the node's string looking for all the
 	 * possibilities.  to avoid some tests in the loop, there are two main
 	 * cases, for UTF-8 patterns (which can't have EXACTF nodes) and
 	 * non-UTF-8 */
 	if (UTF) {
+            U8* folded = NULL;
+
+            if (OP(scan) == EXACTFL) {
+                U8 *d;
+
+                Newx(folded, UTF8_MAX_FOLD_CHAR_EXPAND * STR_LEN(scan) + 1, U8);
+                d = folded;
+                while (s < s_end) {
+                    STRLEN s_len = UTF8SKIP(s);
+                    if (! is_PROBLEMATIC_LOCALE_FOLD_utf8(s)) {
+                        Copy(s, d, s_len, U8);
+                        d += s_len;
+                    }
+                    else if (is_FOLDS_TO_MULTI_utf8(s)) {
+                        *has_exactf_sharp_s = TRUE;
+                        Copy(s, d, s_len, U8);
+                        d += s_len;
+                    }
+                    else if (isASCII(*s)) {
+                        *(d++) = toFOLD(*s);
+                    }
+                    else {
+                        STRLEN len;
+                        _to_utf8_fold_flags(s, d, &len, FOLD_FLAGS_FULL, NULL);
+                        d += len;
+                    }
+                    s += s_len;
+                }
+                *has_exactf_sharp_s = TRUE;
+                s = folded;
+                s_end = d;
+            }
 
             /* Examine the string for a multi-character fold sequence.  UTF-8
              * patterns have all characters pre-folded by the time this code is
@@ -3292,34 +3345,25 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
                     continue;
                 }
 
-                /* Nodes with 'ss' require special handling, except for EXACTFL
-                 * and EXACTFA-ish for which there is no multi-char fold to
-                 * this */
+                /* Nodes with 'ss' require special handling, except for
+                 * EXACTFA-ish for which there is no multi-char fold to this */
                 if (len == 2 && *s == 's' && *(s+1) == 's'
-                    && OP(scan) != EXACTFL
                     && OP(scan) != EXACTFA
                     && OP(scan) != EXACTFA_NO_TRIE)
                 {
                     count = 2;
-                    OP(scan) = EXACTFU_SS;
+                    if (OP(scan) != EXACTFL) {
+                        OP(scan) = EXACTFU_SS;
+                    }
                     s += 2;
                 }
                 else { /* Here is a generic multi-char fold. */
-                    const U8* multi_end  = s + len;
+                    U8* multi_end  = s + len;
 
-                    /* Count how many characters in it.  In the case of /l and
-                     * /aa, no folds which contain ASCII code points are
-                     * allowed, so check for those, and skip if found.  (In
-                     * EXACTFL, no folds are allowed to any Latin1 code point,
-                     * not just ASCII.  But there aren't any of these
-                     * currently, nor ever likely, so don't take the time to
-                     * test for them.  The code that generates the
-                     * is_MULTI_foo() macros croaks should one actually get put
-                     * into Unicode .) */
-                    if (OP(scan) != EXACTFL
-                        && OP(scan) != EXACTFA
-                        && OP(scan) != EXACTFA_NO_TRIE)
-                    {
+                    /* Count how many characters in it.  In the case of /aa, no
+                     * folds which contain ASCII code points are allowed, so
+                     * check for those, and skip if found. */
+                    if (OP(scan) != EXACTFA && OP(scan) != EXACTFA_NO_TRIE) {
                         count = utf8_length(s, multi_end);
                         s = multi_end;
                     }
@@ -3339,9 +3383,19 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
 
                 /* The delta is how long the sequence is minus 1 (1 is how long
                  * the character that folds to the sequence is) */
-                *min_subtract += count - 1;
-            next_iteration: ;
+                total_count += count - 1;
+              next_iteration: ;
 	    }
+            if (OP(scan) == EXACTFL) {
+                int total_chars = utf8_length((U8*) STRING(scan),
+                                           (U8*) STRING(scan) + STR_LEN(scan));
+                if (total_count > total_chars) {
+                    total_count = total_chars;
+                }
+            }
+
+            *min_subtract += total_count;
+            Safefree(folded);
 	}
 	else if (OP(scan) == EXACTFA) {
 
@@ -3361,23 +3415,23 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
                 continue;
             }
         }
-	else if (OP(scan) != EXACTFL) {
+	else {
 
-            /* Non-UTF-8 pattern, not EXACTFA nor EXACTFL node.  Look for the
-             * multi-char folds that are all Latin1.  (This code knows that
-             * there are no current multi-char folds possible with EXACTFL,
-             * relying on fold_grind.t to catch any errors if the very unlikely
-             * event happens that some get added in future Unicode versions.)
-             * As explained in the comments preceding this function, we look
-             * also for the sharp s in EXACTF nodes; it can be in the final
-             * position.  Otherwise we can stop looking 1 byte earlier because
-             * have to find at least two characters for a multi-fold */
-	    const U8* upper = (OP(scan) == EXACTF) ? s_end : s_end -1;
+            /* Non-UTF-8 pattern, not EXACTFA node.  Look for the multi-char
+             * folds that are all Latin1.  As explained in the comments
+             * preceding this function, we look also for the sharp s in EXACTF
+             * and EXACTFL nodes; it can be in the final position.  Otherwise
+             * we can stop looking 1 byte earlier because have to find at least
+             * two characters for a multi-fold */
+	    const U8* upper = (OP(scan) == EXACTF || OP(scan) == EXACTFL)
+                              ? s_end
+                              : s_end -1;
 
 	    while (s < upper) {
                 int len = is_MULTI_CHAR_FOLD_latin1_safe(s, s_end);
                 if (! len) {    /* Not a multi-char fold. */
-                    if (*s == LATIN_SMALL_LETTER_SHARP_S && OP(scan) == EXACTF)
+                    if (*s == LATIN_SMALL_LETTER_SHARP_S
+                        && (OP(scan) == EXACTF || OP(scan) == EXACTFL))
                     {
                         *has_exactf_sharp_s = TRUE;
                     }
@@ -3395,7 +3449,7 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
                      * ss in the pattern, but they remain EXACTF nodes, as they
                      * won't match this unless the target string is is UTF-8,
                      * which we don't know until runtime */
-                    if (OP(scan) != EXACTF) {
+                    if (OP(scan) != EXACTF && OP(scan) != EXACTFL) {
                         OP(scan) = EXACTFU_SS;
                     }
 		}
@@ -4736,6 +4790,7 @@ PerlIO_printf(Perl_debug_log, "LHS=%"UVdf" RHS=%"UVdf"\n",
 		    }
 		    break;
 
+                case ANYOF_NON_UTF8_NON_ASCII_ALL:
                 case ANYOF:
 		    if (flags & SCF_DO_STCLASS_AND)
 			ssc_and(pRExC_state, data->start_class,
@@ -6078,9 +6133,10 @@ Perl_re_op_compile(pTHX_ SV ** const patternp, int pat_count,
 	PL_Latin1 = _new_invlist_C_array(Latin1_invlist);
 	PL_UpperLatin1 = _new_invlist_C_array(UpperLatin1_invlist);
         PL_utf8_foldable = _new_invlist_C_array(_Perl_Any_Folds_invlist);
-
         PL_HasMultiCharFold =
-                        _new_invlist_C_array(_Perl_Multi_Char_Folds_invlist);
+                       _new_invlist_C_array(_Perl_Folds_To_Multi_Char_invlist);
+        PL_problematic_locale_folds
+               =  _new_invlist_C_array(_Perl_Problematic_Locale_Folds_invlist);
     }
 #endif
 
@@ -10798,7 +10854,7 @@ S_alloc_maybe_populate_EXACT(pTHX_ RExC_state_t *pRExC_state,
 
     if (! len_passed_in) {
         if (UTF) {
-            if (FOLD && (! LOC || code_point > 255)) {
+/*XXX*/            if (FOLD && (! LOC || code_point > 255)) {
                 _to_uni_fold_flags(code_point,
                                    character,
                                    &len,
@@ -11421,7 +11477,6 @@ tryagain:
 	    char foldbuf[MAX_NODE_STRING_SIZE+UTF8_MAXBYTES_CASE];
 	    char *s0;
 	    U8 upper_parse = MAX_NODE_STRING_SIZE;
-	    STRLEN foldlen;
             U8 node_type = compute_EXACTish(pRExC_state);
             bool next_is_quantifier;
             char * oldp = NULL;
@@ -11429,9 +11484,15 @@ tryagain:
             /* We can convert EXACTF nodes to EXACTFU if they contain only
              * characters that match identically regardless of the target
              * string's UTF8ness.  The reason to do this is that EXACTF is not
-             * trie-able, EXACTFU is.  (We don't need to figure this out until
-             * pass 2) */
-            bool maybe_exactfu = node_type == EXACTF && PASS2;
+             * trie-able, EXACTFU is.
+             *
+             * Similarly, we can convert EXACTFL nodes to EXACTFU if they
+             * contain only above-Latin1 characters (hence must be in UTF8),
+             * which don't participate in folds with Latin1-range characters,
+             * as the latter's folds aren't known until runtime.  (We don't
+             * need to figure this out until pass 2) */
+            bool maybe_exactfu = PASS2
+                               && (node_type == EXACTF || node_type == EXACTFL);
 
             /* If a folding node contains only code points that don't
              * participate in folds, it can be changed into an EXACT node,
@@ -11448,10 +11509,9 @@ tryagain:
 
 	reparse:
 
-            /* We do the EXACTFish to EXACT node only if folding, and not if in
-             * locale, as whether a character folds or not isn't known until
-             * runtime.  (And we don't need to figure this out until pass 2) */
-            maybe_exact = FOLD && ! LOC && PASS2;
+            /* We do the EXACTFish to EXACT node only if folding.  (And we
+             * don't need to figure this out until pass 2) */
+            maybe_exact = FOLD && PASS2;
 
 	    /* XXX The node can hold up to 255 bytes, yet this only goes to
              * 127.  I (khw) do not know why.  Keeping it somewhat less than
@@ -11742,7 +11802,11 @@ tryagain:
                     goto loopdone;
                 }
 
-                if (! FOLD) {   /* The simple case, just append the literal */
+                if (! FOLD   /* The simple case, just append the literal */
+                    || (LOC  /* Also don't fold for tricky chars under /l */
+                        && _invlist_contains_cp(PL_problematic_locale_folds,
+                                                ender)))
+                {
                     if (UTF) {
                         const STRLEN unilen = reguni(pRExC_state, ender, s);
                         if (unilen > 0) {
@@ -11758,15 +11822,27 @@ tryagain:
                         len--;
                     }
                     else {
+                        /* pass1 */
                         REGC((char)ender, s++);
                     }
+
+                    /* Can get here if folding only if is one of the tricky /l
+                     * characters.  The occurrence of any of these indicate
+                     * that we can't simplify things */
+                    if (FOLD) {
+                        maybe_exact = FALSE;
+                        maybe_exactfu = FALSE;
+                    }
                 }
-                else /* FOLD */ if (! ( UTF
+                else             /* FOLD */
+                     if (! ( UTF
                         /* See comments for join_exact() as to why we fold this
                          * non-UTF at compile time */
                         || (node_type == EXACTFU
                             && ender == LATIN_SMALL_LETTER_SHARP_S)))
                 {
+                    /* Here, are folding and are not UTF-8 encoded; therefore
+                     * the character must be in the range 0-255, and is not /l (the last because we alreaddy handled these under /l in PL_problematic_locale_folds, */
                     if (IS_IN_SOME_FOLD_L1(ender)) {
                         maybe_exact = FALSE;
 
@@ -11789,35 +11865,34 @@ tryagain:
                      * we have an array that finds its fold quickly */
                     *(s++) = (char) ender;
                 }
-                else {  /* UTF */
-
-                    /* Prime the casefolded buffer.  Locale rules, which apply
-                     * only to code points < 256, aren't known until execution,
-                     * so for them, just output the original character using
-                     * utf8.  If we start to fold non-UTF patterns, be sure to
-                     * update join_exact() */
-                    if (LOC && ender < 256) {
-                        if (UVCHR_IS_INVARIANT(ender)) {
-                            *s = (U8) ender;
-                            foldlen = 1;
-                        } else {
-                            *s = UTF8_TWO_BYTE_HI(ender);
-                            *(s + 1) = UTF8_TWO_BYTE_LO(ender);
-                            foldlen = 2;
-                        }
+                else {  /* FOLD and UTF */
+                    UV folded;
+                    if (isASCII(ender)) {
+                        folded = toFOLD(ender);
+                        *(s)++ = folded;
+                        /* XXX See if other places s needs to be done in pass1 */
                     }
-                    else {  /* ender >= 256 */
-                        UV folded = _to_uni_fold_flags(
-                                       ender,
-                                       (U8 *) s,
-                                       &foldlen,
-                                       FOLD_FLAGS_FULL
-                                       | ((LOC) ?  FOLD_FLAGS_LOCALE
-                                                : (ASCII_FOLD_RESTRICTED)
-                                                  ? FOLD_FLAGS_NOMIX_ASCII
-                                                  : 0)
-                                        );
+                    else {
+                        STRLEN foldlen;
 
+                        folded = _to_uni_fold_flags(
+                                     ender,
+                                     (U8 *) s,
+                                     &foldlen,
+                                     FOLD_FLAGS_FULL | ((ASCII_FOLD_RESTRICTED)
+                                                        ? FOLD_FLAGS_NOMIX_ASCII
+                                                        : 0));
+                        s += foldlen;
+
+                        /* The loop increments <len> each time, as all but this
+                         * path (and one other) through it add a single byte to
+                         * the EXACTish node.  But this one has changed len to
+                         * be the correct final value, so subtract one to
+                         * cancel out the increment that follows */
+                        len += foldlen - 1;
+
+                    }
+                    /* outdent */
                         /* If this node only contains non-folding code points
                          * so far, see if this new one is also non-folding */
                         if (maybe_exact) {
@@ -11836,15 +11911,6 @@ tryagain:
                             }
                         }
                         ender = folded;
-                    }
-                    s += foldlen;
-
-                    /* The loop increments <len> each time, as all but this
-                     * path (and one other) through it add a single byte to the
-                     * EXACTish node.  But this one has changed len to be the
-                     * correct final value, so subtract one to cancel out the
-                     * increment that follows */
-                    len += foldlen - 1;
 		}
 
 		if (next_is_quantifier) {
@@ -11893,9 +11959,8 @@ tryagain:
 
 		if (! UTF) {
 
-                    /* These two have no multi-char folds to non-UTF characters
-                     */
-                    if (ASCII_FOLD_RESTRICTED || LOC) {
+                    /* This has no multi-char folds to non-UTF characters */
+                    if (ASCII_FOLD_RESTRICTED) {
                         goto loopdone;
                     }
 
@@ -11926,11 +11991,7 @@ tryagain:
                             }
                         }
                         else if (UTF8_IS_DOWNGRADEABLE_START(*s)) {
-
-                            /* No Latin1 characters participate in multi-char
-                             * folds under /l */
-                            if (LOC
-                                || ! IS_NON_FINAL_FOLD(TWO_BYTE_UTF8_TO_NATIVE(
+                            if (! IS_NON_FINAL_FOLD(TWO_BYTE_UTF8_TO_NATIVE(
                                                                   *s, *(s+1))))
                             {
                                 break;
@@ -12041,7 +12102,7 @@ tryagain:
                      * code points in the node that participate in folds;
                      * similarly for 'maybe_exactfu' and code points that match
                      * differently depending on UTF8ness of the target string
-                     * */
+                     * (for /u), or locale for /l */
                     if (maybe_exact) {
                         OP(ret) = EXACT;
                     }
@@ -12987,9 +13048,8 @@ S_regclass(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth,
      * like locale, folding, utf8ness of the target string */
     SV* cp_list = NULL;
 
-    /* Inversion list of code points this node matches regardless of things
-     * like locale, utf8ness of the target string.  But code points on this
-     * list need to be checked for things that fold to/from them under /i */
+    /* Like cp_list, but code points on this list need to be checked for things
+     * that fold to/from them under /i */
     SV* cp_foldable_list = NULL;
 
 #ifdef EBCDIC
@@ -13445,21 +13505,33 @@ parseit:
          * space will contain a bit for each named class that is to be matched
          * against.  This isn't needed for \p{} and pseudo-classes, as they are
          * not affected by locale, and hence are dealt with separately */
-        if (LOC
-            && ! need_class
-            && (ANYOF_LOCALE == ANYOF_POSIXL
+        if (LOC) {
+            if (FOLD && ! need_class) {
+                need_class = 1;
+                if (SIZE_ONLY) {
+                    RExC_size += ANYOF_POSIXL_FOLD_SKIP - ANYOF_SKIP;
+                }
+                else {
+                    RExC_emit += ANYOF_POSIXL_FOLD_SKIP - ANYOF_SKIP;
+                }
+            }
+            if (ANYOF_LOCALE == ANYOF_POSIXL
                 || (namedclass > OOB_NAMEDCLASS
-                    && namedclass < ANYOF_POSIXL_MAX)))
-        {
-            need_class = 1;
-            if (SIZE_ONLY) {
+                    && namedclass < ANYOF_POSIXL_MAX))
+                /* XXX indent */
+            {
+            if (! need_class) {
+                need_class = 1;
+                if (SIZE_ONLY) {
                 RExC_size += ANYOF_POSIXL_SKIP - ANYOF_SKIP;
             }
             else {
                 RExC_emit += ANYOF_POSIXL_SKIP - ANYOF_SKIP;
             }
+            }
             ANYOF_POSIXL_ZERO(ret);
             ANYOF_FLAGS(ret) |= ANYOF_POSIXL;
+        }
         }
 
 	if (namedclass > OOB_NAMEDCLASS) { /* this is a named class \blah */
@@ -13704,11 +13776,9 @@ parseit:
                                 value,
                                 foldbuf,
                                 &foldlen,
-                                FOLD_FLAGS_FULL
-                                | ((LOC) ?  FOLD_FLAGS_LOCALE
-                                            : (ASCII_FOLD_RESTRICTED)
-                                              ? FOLD_FLAGS_NOMIX_ASCII
-                                              : 0)
+                                FOLD_FLAGS_FULL | (ASCII_FOLD_RESTRICTED
+                                                   ? FOLD_FLAGS_NOMIX_ASCII
+                                                   : 0)
                                 );
 
                 /* Here, <folded> should be the first character of the
@@ -13998,7 +14068,7 @@ parseit:
             }
             else if (value < 256 || UTF) {
 
-                /* Optimize a single value into an EXACTish node, but not if it
+                /* XXX test these Optimize a single value into an EXACTish node, but not if it
                  * would require converting the pattern to UTF-8. */
                 op = compute_EXACTish(pRExC_state);
             }
@@ -14073,6 +14143,14 @@ parseit:
             UV start, end;	/* End points of code point ranges */
 
             SV* fold_intersection = NULL;
+            SV** use_list;
+            if (LOC) {
+                use_list = &ANYOF_UTF8_LOCALE_INVLIST(ret);
+                *use_list = NULL;
+            }
+            else {
+                use_list = &cp_list;
+            }
 
             /* Only the characters in this class that participate in folds need
              * be checked.  Get the intersection of this class and all the
@@ -14108,15 +14186,8 @@ parseit:
             while (invlist_iternext(fold_intersection, &start, &end)) {
                 UV j;
 
-                /* Locale folding for Latin1 characters is deferred until
-                 * runtime */
-                if (LOC && start < 256) {
-                    start = 256;
-                }
-
                 /* Look at every character in the range */
                 for (j = start; j <= end; j++) {
-
                     U8 foldbuf[UTF8_MAXBYTES_CASE+1];
                     STRLEN foldlen;
                     SV** listp;
@@ -14132,12 +14203,14 @@ parseit:
                          * is not really likely, and may be caught by the
                          * default: case of the switch below. */
 
+            /* Locale folding for Latin1 characters is deferred until runtime */
+                        /* XXX wrap */
                         if (IS_IN_SOME_FOLD_L1(j)) {
 
                             /* ASCII is always matched; non-ASCII is matched
                              * only under Unicode rules */
-                            if (isASCII(j) || AT_LEAST_UNI_SEMANTICS) {
-                                cp_list = add_cp_to_invlist(cp_list,
+                            if (isASCII(j) || ! DEPENDS_SEMANTICS) {
+                                *use_list = add_cp_to_invlist(*use_list,
                                                             PL_fold_latin1[j]);
                             }
                             else {
@@ -14162,32 +14235,31 @@ parseit:
                             switch (j) {
                                 case 'k':
                                 case 'K':
-                                    cp_list =
-                                        add_cp_to_invlist(cp_list, KELVIN_SIGN);
+                                  *use_list =
+                                     add_cp_to_invlist(*use_list, KELVIN_SIGN);
                                     break;
                                 case 's':
                                 case 'S':
-                                    cp_list = add_cp_to_invlist(cp_list,
+                                  *use_list = add_cp_to_invlist(*use_list,
                                                     LATIN_SMALL_LETTER_LONG_S);
                                     break;
                                 case MICRO_SIGN:
-                                    cp_list = add_cp_to_invlist(cp_list,
-                                                    GREEK_CAPITAL_LETTER_MU);
-                                    cp_list = add_cp_to_invlist(cp_list,
-                                                      GREEK_SMALL_LETTER_MU);
+                                  *use_list = add_cp_to_invlist(*use_list,
+                                                      GREEK_CAPITAL_LETTER_MU);
+                                  *use_list = add_cp_to_invlist(*use_list,
+                                                        GREEK_SMALL_LETTER_MU);
                                     break;
                                 case LATIN_CAPITAL_LETTER_A_WITH_RING_ABOVE:
                                 case LATIN_SMALL_LETTER_A_WITH_RING_ABOVE:
-                                    cp_list =
-                                        add_cp_to_invlist(cp_list,
-                                                                ANGSTROM_SIGN);
+                                  *use_list =
+                                   add_cp_to_invlist(*use_list, ANGSTROM_SIGN);
                                     break;
                                 case LATIN_SMALL_LETTER_Y_WITH_DIAERESIS:
-                                    cp_list = add_cp_to_invlist(cp_list,
+                                  *use_list = add_cp_to_invlist(*use_list,
                                         LATIN_CAPITAL_LETTER_Y_WITH_DIAERESIS);
                                     break;
                                 case LATIN_SMALL_LETTER_SHARP_S:
-                                    cp_list = add_cp_to_invlist(cp_list,
+                                  *use_list = add_cp_to_invlist(*use_list,
                                                  LATIN_CAPITAL_LETTER_SHARP_S);
                                     break;
                                 case 'F': case 'f':
@@ -14218,16 +14290,14 @@ parseit:
                         continue;
                     }
 
-                    /* Here is an above Latin1 character.  We don't have the rules
-                    * hard-coded for it.  First, get its fold.  This is the simple
-                    * fold, as the multi-character folds have been handled earlier
-                    * and separated out */
+                    /* Here is an above Latin1 character.  We don't have the
+                     * rules hard-coded for it.  First, get its fold.  This is
+                     * the simple fold, as the multi-character folds have been
+                     * handled earlier and separated out */
                     _to_uni_fold_flags(j, foldbuf, &foldlen,
-                                                   ((LOC)
-                                                   ? FOLD_FLAGS_LOCALE
-                                                   : (ASCII_FOLD_RESTRICTED)
-                                                      ? FOLD_FLAGS_NOMIX_ASCII
-                                                      : 0));
+                                                        (ASCII_FOLD_RESTRICTED)
+                                                        ? FOLD_FLAGS_NOMIX_ASCII
+                                                        : 0);
 
                     /* Single character fold of above Latin1.  Add everything in
                     * its fold closure to the list that this node should match.
@@ -14249,23 +14319,30 @@ parseit:
                             }
                             c = SvUV(*c_p);
 
-                            /* /aa doesn't allow folds between ASCII and non-;
-                             * /l doesn't allow them between above and below
-                             * 256 */
+                            /* /aa doesn't allow folds between ASCII and non- */
                             if ((ASCII_FOLD_RESTRICTED
-                                      && (isASCII(c) != isASCII(j)))
-                                || (LOC && c < 256)) {
+                                && (isASCII(c) != isASCII(j))))
+                            {
                                 continue;
                             }
 
-                            /* Folds involving non-ascii Latin1 characters
-                             * under /d are added to a separate list */
+                            /* Folds under /l which cross the 255/256 boundary
+                             * are added to a separate list.  (These are valid
+                             * only when the locale is UTF-8.) */
+                            if (c < 256 && LOC) {
+                                *use_list = add_cp_to_invlist(*use_list, c);
+                                continue;
+                            }
+
                             if (isASCII(c) || c > 255 || AT_LEAST_UNI_SEMANTICS)
                             {
                                 cp_list = add_cp_to_invlist(cp_list, c);
                             }
                             else {
-                              depends_list = add_cp_to_invlist(depends_list, c);
+                                /* Similarly folds involving non-ascii Latin1
+                                * characters under /d are added to their list */
+                                depends_list = add_cp_to_invlist(depends_list,
+                                                                 c);
                             }
                         }
                     }
@@ -14295,7 +14372,7 @@ parseit:
             if (DEPENDS_SEMANTICS) {
                 /* Under /d, everything in the upper half of the Latin1 range
                  * matches these complements */
-                ANYOF_FLAGS(ret) |= ANYOF_NON_UTF8_NON_ASCII_ALL;
+                OP(ret) = ANYOF_NON_UTF8_NON_ASCII_ALL;
             }
             else if (AT_LEAST_ASCII_RESTRICTED) {
                 /* Under /a and /aa, everything above ASCII matches these
@@ -14399,9 +14476,18 @@ parseit:
      * until runtime; set the run-time fold flag for these.  (We don't have to
      * worry about properties folding, as that is taken care of by the swash
      * fetching) */
-    if (FOLD && LOC)
-    {
-       ANYOF_FLAGS(ret) |= ANYOF_LOC_FOLD;
+    if (LOC && FOLD) {
+        if (ANYOF_UTF8_LOCALE_INVLIST(ret)) {
+            ANYOF_FLAGS(ret) |= ANYOF_LOC_FOLD;
+        }
+        else if (cp_list) {
+            UV start, end;
+            invlist_iterinit(cp_list);
+            if (invlist_iternext(cp_list, &start, &end) && start < 256) {
+                ANYOF_FLAGS(ret) |= ANYOF_LOC_FOLD;
+            }
+            invlist_iterfinish(cp_list);
+        }
     }
 
     /* Optimize inverted simple patterns (e.g. [^a-z]) when everything is known
@@ -14457,7 +14543,7 @@ parseit:
     if (cp_list
         && ! invert
         && ! depends_list
-        && ! (ANYOF_FLAGS(ret) & ANYOF_POSIXL)
+        && ! (ANYOF_FLAGS(ret) & (ANYOF_LOC_FOLD|ANYOF_POSIXL))
         && ! HAS_NONLOCALE_RUNTIME_PROPERTY_DEFINITION
 
            /* We don't optimize if we are supposed to make sure all non-Unicode
@@ -14487,7 +14573,7 @@ parseit:
                 && (start < 256 || UTF))
             {
                 /* Here, the list contains a single code point.  Can optimize
-                 * into an EXACT node */
+                 * into an EXACTish node */
 
                 value = start;
 
@@ -14646,6 +14732,7 @@ S_set_ANYOF_arg(pTHX_ RExC_state_t* const pRExC_state,
 	AV * const av = newAV();
 	SV *rv;
 
+        if (cp_list || runtime_defns || swash) ANYOF_FLAGS(node) |= ANYOF_KHW;
 	av_store(av, 0, (runtime_defns)
 			? SvREFCNT_inc(runtime_defns) : &PL_sv_undef);
 	if (swash) {
@@ -15460,8 +15547,8 @@ Perl_regprop(pTHX_ const regexp *prog, SV *sv, const regnode *o)
             }
         }
 
-	if (flags & (ANYOF_ABOVE_LATIN1_ALL|ANYOF_ABOVE_LATIN1_ALL)
-            || ANYOF_NONBITMAP(o))
+	if ((flags & ANYOF_ABOVE_LATIN1_ALL)
+            || ANYOF_UTF8_LOCALE_INVLIST(o) || ANYOF_NONBITMAP(o))
         {
             if (do_sep) {
                 Perl_sv_catpvf(aTHX_ sv,"%s][%s",PL_colors[1],PL_colors[0]);
@@ -15470,7 +15557,7 @@ Perl_regprop(pTHX_ const regexp *prog, SV *sv, const regnode *o)
                     sv_catpvs(sv, "^");
             }
 
-            if (flags & ANYOF_NON_UTF8_NON_ASCII_ALL) {
+            if (OP(o) == ANYOF_NON_UTF8_NON_ASCII_ALL) {
                 sv_catpvs(sv, "{non-utf8-latin1-all}");
             }
 
@@ -15534,6 +15621,24 @@ Perl_regprop(pTHX_ const regexp *prog, SV *sv, const regnode *o)
                     Safefree(origs);
                     SvREFCNT_dec_NN(lv);
                 }
+            }
+
+            if (flags & ANYOF_LOC_FOLD && ANYOF_UTF8_LOCALE_INVLIST(o)) {
+                UV start, end;
+                int max_entries = 256;
+
+                sv_catpvs(sv, "{utf8 locale}");
+                invlist_iterinit(ANYOF_UTF8_LOCALE_INVLIST(o));
+                while (invlist_iternext(ANYOF_UTF8_LOCALE_INVLIST(o),
+                                        &start, &end)) {
+                    put_range(sv, start, end);
+                    max_entries --;
+                    if (max_entries < 0) {
+                        sv_catpvs(sv, "...");
+                        break;
+                    }
+                }
+                invlist_iterfinish(ANYOF_UTF8_LOCALE_INVLIST(o));
             }
 	}
 
@@ -16223,7 +16328,6 @@ S_put_latin1_charclass_innards(pTHX_ SV *sv, char *bitmap)
      * output anything */
 
     int i;
-    int rangestart = -1;
     bool has_output_anything = FALSE;
 
     PERL_ARGS_ASSERT_PUT_LATIN1_CHARCLASS_INNARDS;
@@ -16399,8 +16503,11 @@ S_dumpuntil(pTHX_ const regexp *r, const regnode *start, const regnode *node,
 	}
 	else if (PL_regkind[(U8)op] == ANYOF) {
 	    /* arglen 1 + class block */
-	    node += 1 + ((ANYOF_FLAGS(node) & ANYOF_POSIXL)
-		    ? ANYOF_POSIXL_SKIP : ANYOF_SKIP);
+	    node += 1 + ((ANYOF_FLAGS(node) & ANYOF_LOC_FOLD)
+		         ? ANYOF_POSIXL_FOLD_SKIP
+                         : (ANYOF_FLAGS(node) & ANYOF_POSIXL)
+                           ? ANYOF_POSIXL_SKIP
+                           : ANYOF_SKIP);
 	    node = NEXTOPER(node);
 	}
 	else if (PL_regkind[(U8)op] == EXACT) {

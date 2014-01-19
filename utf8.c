@@ -1774,17 +1774,22 @@ Perl__to_fold_latin1(pTHX_ const U8 c, U8* p, STRLEN *lenp, const unsigned int f
 }
 
 UV
-Perl__to_uni_fold_flags(pTHX_ UV c, U8* p, STRLEN *lenp, const U8 flags)
+Perl__to_uni_fold_flags(pTHX_ UV c, U8* p, STRLEN *lenp, U8 flags)
 {
 
     /* Not currently externally documented, and subject to change
      *  <flags> bits meanings:
      *	    FOLD_FLAGS_FULL  iff full folding is to be used;
-     *	    FOLD_FLAGS_LOCALE iff in locale
+     *	    FOLD_FLAGS_LOCALE is set iff the rules from the current underlying
+     *	                      locale are to be used.
      *	    FOLD_FLAGS_NOMIX_ASCII iff non-ASCII to ASCII folds are prohibited
      */
 
     PERL_ARGS_ASSERT__TO_UNI_FOLD_FLAGS;
+
+    if (IN_UTF8_CTYPE_LOCALE) {
+        flags &= ~FOLD_FLAGS_LOCALE;
+    }
 
     if (c < 256) {
 	UV result = _to_fold_latin1((U8) c, p, lenp,
@@ -2087,9 +2092,10 @@ STATIC UV
 S_check_locale_boundary_crossing(pTHX_ const U8* const p, const UV result, U8* const ustrp, STRLEN *lenp)
 {
     /* This is called when changing the case of a utf8-encoded character above
-     * the Latin1 range, and the operation is in locale.  If the result
-     * contains a character that crosses the 255/256 boundary, disallow the
-     * change, and return the original code point.  See L<perlfunc/lc> for why;
+     * the Latin1 range, and the operation is in a non-UTF-8 locale.  If the
+     * result contains a character that crosses the 255/256 boundary, disallow
+     * the change, and return the original code point.  See L<perlfunc/lc> for
+     * why;
      *
      * p	points to the original string whose case was changed; assumed
      *          by this routine to be well-formed
@@ -2138,18 +2144,28 @@ Instead use L</toUPPER_utf8>.
 =cut */
 
 /* Not currently externally documented, and subject to change:
- * <flags> is set iff locale semantics are to be used for code points < 256
+ * <flags> is set iff iff the rules from the current underlying locale are to
+ *         be used.
  * <tainted_ptr> if non-null, *tainted_ptr will be set TRUE iff locale rules
  *		 were used in the calculation; otherwise unchanged. */
 
 UV
-Perl__to_utf8_upper_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool flags, bool* tainted_ptr)
+Perl__to_utf8_upper_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, bool flags, bool* tainted_ptr)
 {
     dVAR;
 
     UV result;
 
     PERL_ARGS_ASSERT__TO_UTF8_UPPER_FLAGS;
+
+    if (flags) {
+        if (tainted_ptr) {
+            *tainted_ptr = TRUE;
+        }
+        if (IN_UTF8_CTYPE_LOCALE) {
+            flags = FALSE;
+        }
+    }
 
     if (UTF8_IS_INVARIANT(*p)) {
 	if (flags) {
@@ -2189,9 +2205,6 @@ Perl__to_utf8_upper_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool
 	*lenp = 2;
     }
 
-    if (tainted_ptr) {
-	*tainted_ptr = TRUE;
-    }
     return result;
 }
 
@@ -2203,20 +2216,29 @@ Instead use L</toTITLE_utf8>.
 =cut */
 
 /* Not currently externally documented, and subject to change:
- * <flags> is set iff locale semantics are to be used for code points < 256
- *	   Since titlecase is not defined in POSIX, uppercase is used instead
- *	   for these/
+ * <flags> is set iff the rules from the current underlying locale are to be
+ *         used.  Since titlecase is not defined in POSIX, for other than a
+ *         UTF-8 locale, uppercase is used instead for code points < 256.
  * <tainted_ptr> if non-null, *tainted_ptr will be set TRUE iff locale rules
  *		 were used in the calculation; otherwise unchanged. */
 
 UV
-Perl__to_utf8_title_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool flags, bool* tainted_ptr)
+Perl__to_utf8_title_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, bool flags, bool* tainted_ptr)
 {
     dVAR;
 
     UV result;
 
     PERL_ARGS_ASSERT__TO_UTF8_TITLE_FLAGS;
+
+    if (flags) {
+        if (tainted_ptr) {
+            *tainted_ptr = TRUE;
+        }
+        if (IN_UTF8_CTYPE_LOCALE) {
+            flags = FALSE;
+        }
+    }
 
     if (UTF8_IS_INVARIANT(*p)) {
 	if (flags) {
@@ -2256,9 +2278,6 @@ Perl__to_utf8_title_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool
 	*lenp = 2;
     }
 
-    if (tainted_ptr) {
-	*tainted_ptr = TRUE;
-    }
     return result;
 }
 
@@ -2270,18 +2289,28 @@ Instead use L</toLOWER_utf8>.
 =cut */
 
 /* Not currently externally documented, and subject to change:
- * <flags> is set iff locale semantics are to be used for code points < 256
+ * <flags> is set iff iff the rules from the current underlying locale are to
+ *         be used.
  * <tainted_ptr> if non-null, *tainted_ptr will be set TRUE iff locale rules
  *		 were used in the calculation; otherwise unchanged. */
 
 UV
-Perl__to_utf8_lower_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool flags, bool* tainted_ptr)
+Perl__to_utf8_lower_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, bool flags, bool* tainted_ptr)
 {
     UV result;
 
     dVAR;
 
     PERL_ARGS_ASSERT__TO_UTF8_LOWER_FLAGS;
+
+    if (flags) {
+        if (tainted_ptr) {
+            *tainted_ptr = TRUE;
+        }
+        if (IN_UTF8_CTYPE_LOCALE) {
+            flags = FALSE;
+        }
+    }
 
     if (UTF8_IS_INVARIANT(*p)) {
 	if (flags) {
@@ -2322,9 +2351,6 @@ Perl__to_utf8_lower_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, const bool
 	*lenp = 2;
     }
 
-    if (tainted_ptr) {
-	*tainted_ptr = TRUE;
-    }
     return result;
 }
 
@@ -2337,9 +2363,10 @@ Instead use L</toFOLD_utf8>.
 
 /* Not currently externally documented, and subject to change,
  * in <flags>
- *	bit FOLD_FLAGS_LOCALE is set iff locale semantics are to be used for code
- *			      points < 256.  Since foldcase is not defined in
- *			      POSIX, lowercase is used instead
+ *	bit FOLD_FLAGS_LOCALE is set iff the rules from the current underlying
+ *	                      locale are to be used.  Since foldcase is not
+ *	                      defined in POSIX, for other than a UTF-8 locale,
+ *	                      lowercase is used instead for code points < 256.
  *      bit FOLD_FLAGS_FULL   is set iff full case folds are to be used;
  *			      otherwise simple folds
  *      bit FOLD_FLAGS_NOMIX_ASCII is set iff folds of non-ASCII to ASCII are
@@ -2360,6 +2387,15 @@ Perl__to_utf8_fold_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, U8 flags, b
     assert (! ((flags & FOLD_FLAGS_LOCALE) && (flags & FOLD_FLAGS_NOMIX_ASCII)));
 
     assert(p != ustrp); /* Otherwise overwrites */
+
+    if (flags & FOLD_FLAGS_LOCALE) {
+        if (tainted_ptr) {
+            *tainted_ptr = TRUE;
+        }
+        if (IN_UTF8_CTYPE_LOCALE) {
+            flags &= ~FOLD_FLAGS_LOCALE;
+        }
+    }
 
     if (UTF8_IS_INVARIANT(*p)) {
 	if (flags & FOLD_FLAGS_LOCALE) {
@@ -2386,8 +2422,8 @@ Perl__to_utf8_fold_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, U8 flags, b
 
 	if (flags & FOLD_FLAGS_LOCALE) {
 
-            /* Special case this character, as what normally gets returned
-             * under locale doesn't work */
+            /* Special case these two characters, as what normally gets
+             * returned under locale doesn't work */
             if (UTF8SKIP(p) == sizeof(LATIN_CAPITAL_LETTER_SHARP_S_UTF8) - 1
                 && memEQ((char *) p, LATIN_CAPITAL_LETTER_SHARP_S_UTF8,
                           sizeof(LATIN_CAPITAL_LETTER_SHARP_S_UTF8) - 1))
@@ -2453,9 +2489,6 @@ Perl__to_utf8_fold_flags(pTHX_ const U8 *p, U8* ustrp, STRLEN *lenp, U8 flags, b
 	*lenp = 2;
     }
 
-    if (tainted_ptr) {
-	*tainted_ptr = TRUE;
-    }
     return result;
 
   return_long_s:
@@ -4118,6 +4151,10 @@ Perl_foldEQ_utf8_flags(pTHX_ const char *s1, char **pe1, UV l1, bool u1, const c
      * is less common than /iu, and I (khw) also believe that real-world /il
      * and /iaa matches are most likely to involve code points 0-255, and this
      * function only under rare conditions gets called for 0-255. */
+
+    if (IN_UTF8_CTYPE_LOCALE) {
+        flags &= ~FOLDEQ_UTF8_LOCALE;
+    }
 
     if (pe1) {
         e1 = *(U8**)pe1;

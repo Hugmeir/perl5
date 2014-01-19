@@ -20,6 +20,8 @@
  *  "_TAIL"       if instead it represents all but the first byte.  This, and
  *                with no additional suffix are both string constants */
 
+#define MICRO_SIGN_UTF8  "\xC2\xB5"    /* U+00B5 */
+
 #define LATIN_SMALL_LETTER_LONG_S_UTF8  "\xC5\xBF"    /* U+017F */
 
 #define COMBINING_GRAVE_ACCENT_UTF8  "\xCC\x80"    /* U+0300 */

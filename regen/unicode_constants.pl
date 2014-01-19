@@ -140,6 +140,8 @@ print $out_fh "\n#endif /* H_UNICODE_CONSTANTS */\n";
 read_only_bottom_close_and_rename($out_fh);
 
 __DATA__
+U+00B5 string
+
 U+017F string
 
 U+0300 string

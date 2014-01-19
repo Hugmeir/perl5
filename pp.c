@@ -3531,17 +3531,27 @@ PP(pp_ucfirst)
 	}
 	/* is ucfirst() */
 	else if (IN_LOCALE_RUNTIME) {
-	    *tmpbuf = toUPPER_LC(*s);	/* This would be a bug if any locales
-					 * have upper and title case different
-					 */
+            if (IN_UTF8_CTYPE_LOCALE) {
+                goto do_not_locale_rules;
+            }
+
+            *tmpbuf = (U8) toUPPER_LC(*s); /* This would be a bug if any
+                                              locales have upper and title case
+                                              different */
 	}
 	else if (! IN_UNI_8_BIT) {
 	    *tmpbuf = toUPPER(*s);	/* Returns caseless for non-ascii, or
 					 * on EBCDIC machines whatever the
 					 * native function does */
 	}
-	else { /* is ucfirst non-UTF-8, not in locale, and cased latin1 */
-	    UV title_ord = _to_upper_title_latin1(*s, tmpbuf, &tculen, 's');
+        else {
+            /* Here, is ucfirst non-UTF-8, not in locale (unless that locale is
+             * UTF-8, which we treat as not in locale), and cased latin1 */
+	    UV title_ord;
+
+      do_not_locale_rules:
+
+	    title_ord = _to_upper_title_latin1(*s, tmpbuf, &tculen, 's');
 	    if (tculen > 1) {
 		assert(tculen == 2);
 
@@ -3818,11 +3828,14 @@ PP(pp_uc)
 	    /* Use locale casing if in locale; regular style if not treating
 	     * latin1 as having case; otherwise the latin1 casing.  Do the
 	     * whole thing in a tight loop, for speed, */
-	    if (IN_LOCALE_RUNTIME) {
+            if (IN_LOCALE_RUNTIME) {
 		TAINT;
 		SvTAINTED_on(dest);
+                if (IN_UTF8_CTYPE_LOCALE) {
+                    goto do_not_locale_rules;
+                }
 		for (; s < send; d++, s++)
-		    *d = toUPPER_LC(*s);
+                    *d = (U8) toUPPER_LC(*s);
 	    }
 	    else if (! IN_UNI_8_BIT) {
 		for (; s < send; d++, s++) {
@@ -3830,6 +3843,7 @@ PP(pp_uc)
 		}
 	    }
 	    else {
+          do_not_locale_rules:
 		for (; s < send; d++, s++) {
 		    *d = toUPPER_LATIN1_MOD(*s);
 		    if (LIKELY(*d != LATIN_SMALL_LETTER_Y_WITH_DIAERESIS)) {
@@ -4191,6 +4205,9 @@ PP(pp_fc)
         if ( IN_LOCALE_RUNTIME ) { /* Under locale */
             TAINT;
             SvTAINTED_on(dest);
+            if (IN_UTF8_CTYPE_LOCALE) {
+                goto do_uni_folding;
+            }
             for (; s < send; d++, s++)
                 *d = toFOLD_LC(*s);
         }
@@ -4199,6 +4216,7 @@ PP(pp_fc)
                 *d = toFOLD(*s);
         }
         else {
+      do_uni_folding:
             /* For ASCII and the Latin-1 range, there's only two troublesome
              * folds, \x{DF} (\N{LATIN SMALL LETTER SHARP S}), which under full
              * casefolding becomes 'ss'; and \x{B5} (\N{MICRO SIGN}), which
