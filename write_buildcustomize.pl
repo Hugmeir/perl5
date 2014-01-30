@@ -25,6 +25,8 @@ if ( @ARGV ) {
 # Term::ReadLine is not here for building but for allowing the debugger to
 # run under miniperl when nothing but miniperl will build :-(.
 
+# Text::ParseWords is only used in ExtUtils::Liblist::Kid::_win32_ext()
+
 my @toolchain = qw(cpan/AutoLoader/lib
 		   dist/Carp/lib
 		   dist/PathTools dist/PathTools/lib
@@ -42,8 +44,6 @@ my @toolchain = qw(cpan/AutoLoader/lib
 		   dist/constant/lib
 		   );
 
-# Used only in ExtUtils::Liblist::Kid::_win32_ext()
-push @toolchain, 'cpan/Text-ParseWords/lib' if $^O eq 'MSWin32';
 push @toolchain, 'ext/VMS-Filespec/lib' if $^O eq 'VMS';
 
 unshift @INC, @toolchain;
