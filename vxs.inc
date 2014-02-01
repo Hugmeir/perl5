@@ -12,7 +12,7 @@
 /* proto member is unused in version, it is used in CORE by non version xsubs */
 #  define VXSXSDP(x)
 #endif
-#define VXS(name) XS(VXSp(name))
+#define VXS(name) XS(VXSp(name)); XS(VXSp(name))
 
 #ifdef VXS_XSUB_DETAILS
 #  ifdef PERL_CORE

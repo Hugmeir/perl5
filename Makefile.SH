@@ -106,6 +106,9 @@ true)
 	hpux*)
 		linklibperl="-L `pwd | sed 's/\/UU$//'` -Wl,+s -Wl,+b$archlibexp/CORE -lperl"
 		;;
+	MSWin32)
+		pldlflags="$pldlflags -DPERLDLL"
+		;;
 	os390*)
             shrpldflags='-W l,XPLINK,dll'
 	    linklibperl='libperl.x'

@@ -2872,7 +2872,12 @@ $define|true|[yY]*)
 	*)  echo "Using targetarch $targetarch." >&4 ;;
 	esac
 	case "$targetrun" in
-	wine) targethost='127.0.0.1' ;;
+	wine|*qemu*)
+            targethost='127.0.0.1'
+            case "$targetdir" in
+            '') targetdir=`$test -f ../Configure & cd ..; pwd`;;
+            esac
+            ;;
 	*)
 	case "$targethost" in
 	'') echo "Targethost not defined." >&4; croak=y ;;
@@ -3035,6 +3040,38 @@ $rm -f out.tmp
 exit \$status
 EOF
 	    ;;
+        *qemu*)
+         case "$sysroot" in
+         '') echo "You need -Dsysroot set to cross-compile with qemu." >&4
+             exit 1
+             ;;
+         esac
+         to=:
+         from=:
+         cat >$run <<EOF
+#!/bin/sh
+env=''
+case "\$1" in
+-cwd)
+  shift
+  cwd=\$1
+  shift
+  ;;
+esac
+case "\$1" in
+-env)
+  shift
+  env=\$1
+  shift
+  ;;
+esac
+case "\$cwd" in
+'') ;;
+*) cd \$cwd ;;
+esac
+\$env $targetrun $qemuoptions -L $sysroot "\$@"
+EOF
+         ;;
 	*)  echo "Unknown targetrun '$targetrun'" >&4
 	    exit 1
 	    ;;
@@ -19788,7 +19825,7 @@ EOCP
 		if eval $compile; then
 		    $rm -f tryp.out
 		    # Copy the .c file to the remote host ($to is an ssh-alike if targethost is set)
-		    if $test "X$targethost" != X; then
+		    if $test "X$to" != "X:"; then
 			$to tryp.c
 			$to tryp
 			$run "cat tryp.c | ./tryp" 2>/dev/null > tryp.out
@@ -19858,7 +19895,7 @@ EOCP
 	set tryp
 	if eval $compile; then
 	    $rm -f tryp.out
-	    if $test "X$targethost" != X; then
+	    if $test "X$to" != "X:"; then
 		$to tryp.c
                 $to tryp
                 $run "cat tryp.c | ./tryp" 2>/dev/null > tryp.out

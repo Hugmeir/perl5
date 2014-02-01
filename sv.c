@@ -33,11 +33,11 @@
 #include "regcomp.h"
 
 #ifndef HAS_C99
-# if __STDC_VERSION__ >= 199901L && !defined(VMS)
+# if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L && !defined(VMS)
 #  define HAS_C99 1
 # endif
 #endif
-#if HAS_C99
+#ifdef HAS_C99
 # include <stdint.h>
 #endif
 
@@ -10915,7 +10915,7 @@ Perl_sv_vcatpvfn_flags(pTHX_ SV *const sv, const char *const pat, const STRLEN p
 	case 'V':
 	case 'z':
 	case 't':
-#if HAS_C99
+#ifdef HAS_C99
         case 'j':
 #endif
 	    intsize = *q++;
@@ -11023,9 +11023,6 @@ Perl_sv_vcatpvfn_flags(pTHX_ SV *const sv, const char *const pat, const STRLEN p
 	    /*FALLTHROUGH*/
 	case 'd':
 	case 'i':
-#if vdNUMBER
-	format_vd:
-#endif
 	    if (vectorize) {
 		STRLEN ulen;
 		if (!veclen)
@@ -11051,7 +11048,7 @@ Perl_sv_vcatpvfn_flags(pTHX_ SV *const sv, const char *const pat, const STRLEN p
 		case 'z':	iv = va_arg(*args, SSize_t); break;
 		case 't':	iv = va_arg(*args, ptrdiff_t); break;
 		default:	iv = va_arg(*args, int); break;
-#if HAS_C99
+#ifdef HAS_C99
 		case 'j':	iv = va_arg(*args, intmax_t); break;
 #endif
 		case 'q':
@@ -11148,7 +11145,7 @@ Perl_sv_vcatpvfn_flags(pTHX_ SV *const sv, const char *const pat, const STRLEN p
 		case 'V':  uv = va_arg(*args, UV); break;
 		case 'z':  uv = va_arg(*args, Size_t); break;
 	        case 't':  uv = va_arg(*args, ptrdiff_t); break; /* will sign extend, but there is no uptrdiff_t, so oh well */
-#if HAS_C99
+#ifdef HAS_C99
 		case 'j':  uv = va_arg(*args, uintmax_t); break;
 #endif
 		default:   uv = va_arg(*args, unsigned); break;
@@ -11484,7 +11481,7 @@ Perl_sv_vcatpvfn_flags(pTHX_ SV *const sv, const char *const pat, const STRLEN p
 		case 'V':	*(va_arg(*args, IV*)) = i; break;
 		case 'z':	*(va_arg(*args, SSize_t*)) = i; break;
 		case 't':	*(va_arg(*args, ptrdiff_t*)) = i; break;
-#if HAS_C99
+#ifdef HAS_C99
 		case 'j':	*(va_arg(*args, intmax_t*)) = i; break;
 #endif
 		case 'q':
@@ -13362,7 +13359,7 @@ perl_clone_using(PerlInterpreter *proto_perl, UV flags,
     PL_origargc		= proto_perl->Iorigargc;
     PL_origargv		= proto_perl->Iorigargv;
 
-#if !NO_TAINT_SUPPORT
+#ifndef NO_TAINT_SUPPORT
     /* Set tainting stuff before PerlIO_debug can possibly get called */
     PL_tainting		= proto_perl->Itainting;
     PL_taint_warn	= proto_perl->Itaint_warn;
@@ -13543,7 +13540,7 @@ perl_clone_using(PerlInterpreter *proto_perl, UV flags,
     PL_timesbuf		= proto_perl->Itimesbuf;
 #endif
 
-#if !NO_TAINT_SUPPORT
+#ifndef NO_TAINT_SUPPORT
     PL_tainted		= proto_perl->Itainted;
 #else
     PL_tainted          = FALSE;

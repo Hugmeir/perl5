@@ -31,9 +31,10 @@ our $VERSION = '6.86';
 
 $ENV{EMXSHELL} = 'sh'; # to run `commands`
 
-my $cross_compiling_from_unix = $Config{usecrosscompile}
-                                && !defined &DynaLoader::boot_DynaLoader
-                                && $Config{hostosname} !~ /win/i;
+# If we're cross-compiling, we're on the host system, and 
+use constant CROSS_COMPILE_FROM_UNIX => $Config{usecrosscompile}
+                                    && !defined &DynaLoader::boot_DynaLoader
+                                    && $Config{hostosname} ne 'MSWin32';
 
 my ( $BORLAND, $GCC, $DLLTOOL ) = _identify_compiler_environment( \%Config );
 
@@ -111,7 +112,7 @@ used by default.
 
 sub maybe_command {
     my($self,$file) = @_;
-    if ($cross_compiling_from_unix) {
+    if (CROSS_COMPILE_FROM_UNIX) {
         return $file if -x $file;
     }
     my @e = exists($ENV{'PATHEXT'})
@@ -142,7 +143,7 @@ Using \ for Windows.
 sub init_DIRFILESEP {
     my($self) = shift;
 
-    if ( $cross_compiling_from_unix ) {
+    if ( CROSS_COMPILE_FROM_UNIX ) {
         return $self->{DIRFILESEP} = '/';
     }
     
@@ -161,7 +162,7 @@ Override some of the slower, portable commands with Windows specific ones.
 sub init_tools {
     my ($self) = @_;
 
-    if ( !$cross_compiling_from_unix ) {
+    if ( !CROSS_COMPILE_FROM_UNIX ) {
         $self->{NOOP}     ||= 'rem';
         $self->{DEV_NULL} ||= '> NUL';
     }
@@ -482,8 +483,9 @@ sub _normalize_path_name {
     my $self = shift;
     my $file = shift;
 
-    eval { require Win32 };
-    my $short = eval { Win32::GetShortPathName($file) };
+    return lc $file if CROSS_COMPILE_FROM_UNIX;
+    require Win32;
+    my $short = Win32::GetShortPathName($file);
     return defined $short ? lc $short : lc $file;
 }
 

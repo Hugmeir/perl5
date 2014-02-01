@@ -743,7 +743,9 @@ Perl_re_intuit_start(pTHX_
 	if (!ml_anch) {
 	    const SSize_t end = prog->check_offset_max + CHR_SVLEN(check)
 					 - (SvTAIL(check) != 0);
-	    const SSize_t eshift = CHR_DIST((U8*)strend, (U8*)s) - end;
+	    const SSize_t eshift = ((U8*)s > (U8*)strend)
+                                 ? (CHR_DIST((U8*)strend, (U8*)s) - end)
+                                 : 0;
 
 	    if (end_shift < eshift)
 		end_shift = eshift;

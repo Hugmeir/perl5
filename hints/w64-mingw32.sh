@@ -34,12 +34,13 @@ targetsh='cmd /x /c'
 
 # Win32-specific flags
 ccflags="$ccflags -DWIN32 -DWIN64 -DCONSERVATIVE  -DPERL_TEXTMODE_SCRIPTS -DPERL_IMPLICIT_CONTEXT -DPERL_IMPLICIT_SYS"
-# Should this be here?
-ccflags="$ccflags -DPERLDLL"
+# mms-bitfields is required for ABI
 ccflags="$ccflags -mms-bitfields"
 # Add win32/include to the search path
 ccflags="$ccflags -I$src -I$src/win32 -I$src/win32/include "
 cppflags="$cppflags $ccflags"
+
+# libswanted from win32/config.gc + LIBS from win32/makefile.mk
 libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x msvcrt ws2_32 wsock32 comctl32 mingw32 mingw64 uuid moldname kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 ole32 oleaut32 netapi32 mpr winmm version odbc32 odbccp32'
 
 lddlflags="$lddlflags -mdll"
@@ -49,12 +50,11 @@ dlsrc='dl_win32.xs'
 
 dlltool='dlltool.exe'
 
-# Do we need this?
-#ldflags="$ldflags -static -static-libgcc -static-libstdc++"
-
 archobjs="win32.o win32sck.o win32thread.o fcrypt.o win32io.o"
 
 path_sep=';'
+# Should this be here?
+ccflags="$ccflags -DPERLDLL"
 
 # Defined in win32/
 d_alarm='define'

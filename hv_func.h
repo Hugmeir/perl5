@@ -228,7 +228,7 @@ S_perl_hash_siphash_2_4(const unsigned char * const seed, const unsigned char *i
   case 3: b |= ( ( U64TYPE )in[ 2] )  << 16;
   case 2: b |= ( ( U64TYPE )in[ 1] )  <<  8;
   case 1: b |= ( ( U64TYPE )in[ 0] ); break;
-  case 0: break;
+  case 0: break; default: break;
   }
 
   v3 ^= b;
@@ -284,6 +284,8 @@ S_perl_hash_superfast(const unsigned char * const seed, const unsigned char *str
         case 1: hash += *str;
                 hash ^= hash << 10;
                 hash += hash >> 1;
+                break;
+        default: break;
     }
     /* Force "avalanching" of final 127 bits */
     hash ^= hash << 3;
@@ -425,6 +427,8 @@ S_perl_hash_murmur3(const unsigned char * const seed, const unsigned char *ptr, 
             k1 |= carry<<24;
             MURMUR_DOBLOCK(h1, k1);
         }
+        break;
+        default: break;
     }
 #endif
     /* Advance over whole 32-bit chunks, possibly leaving 1..3 bytes */
